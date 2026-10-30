@@ -21,6 +21,8 @@ import {
   Image as ImageIcon,
   Check,
   X,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import "./App.css";
 
@@ -52,6 +54,10 @@ type TransformAction =
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // Keeps the original uploaded image safe for Reset.
+  const originalImageRef = useRef<HTMLImageElement | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [imageName, setImageName] = useState("");
@@ -70,12 +76,15 @@ function App() {
   const [cropSelection, setCropSelection] =
     useState<Selection | null>(null);
 
-  // Crop coordinates are stored in the current image's pixel space.
   const [cropRegion, setCropRegion] =
     useState<CropRegion | null>(null);
 
-  // Forces canvas redraw after an image transformation.
   const [imageRevision, setImageRevision] = useState(0);
+
+  // Resize states
+  const [resizeWidth, setResizeWidth] = useState(0);
+  const [resizeHeight, setResizeHeight] = useState(0);
+  const [lockAspectRatio, setLockAspectRatio] = useState(true);
 
   const getImageDimensions = () => {
     const image = imageRef.current;
@@ -92,6 +101,16 @@ function App() {
           height: image.height,
         };
   };
+
+  // Update resize fields whenever image dimensions change.
+  useEffect(() => {
+    const dimensions = getImageDimensions();
+
+    if (dimensions) {
+      setResizeWidth(Math.round(dimensions.width));
+      setResizeHeight(Math.round(dimensions.height));
+    }
+  }, [imageRevision, cropRegion]);
 
   const getCanvasPoint = (
     event: React.MouseEvent<HTMLCanvasElement>
@@ -170,11 +189,9 @@ function App() {
 
       ctx.save();
 
-      // Dark overlay.
       ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
       ctx.fillRect(0, 0, width, height);
 
-      // Clear selected area.
       ctx.clearRect(
         x,
         y,
@@ -182,7 +199,6 @@ function App() {
         selectionHeight
       );
 
-      // Redraw image.
       ctx.drawImage(
         image,
         source.x,
@@ -295,7 +311,9 @@ function App() {
     const url = URL.createObjectURL(file);
 
     image.onload = () => {
+      // Save both current and original image references.
       imageRef.current = image;
+      originalImageRef.current = image;
 
       setImageName(file.name);
       setZoom(1);
@@ -305,6 +323,8 @@ function App() {
       setCropSelection(null);
       setCropMode(false);
       setIsSelecting(false);
+      setCropStart(null);
+
       setImageRevision((previous) => previous + 1);
 
       requestAnimationFrame(() => {
@@ -633,11 +653,11 @@ function App() {
     transformedImage.onload = () => {
       imageRef.current = transformedImage;
 
-      // Transformation is applied to the current cropped image.
       setCropRegion(null);
       setCropSelection(null);
       setCropMode(false);
       setIsSelecting(false);
+      setCropStart(null);
 
       setImageRevision((previous) => previous + 1);
 
@@ -671,6 +691,197 @@ function App() {
 
     transformedImage.src =
       transformCanvas.toDataURL("image/png");
+  };
+
+  // Resize functions.
+  const handleResizeWidth = (value: number) => {
+    const width = Math.max(1, Math.min(12000, value));
+
+    setResizeWidth(width);
+
+    if (lockAspectRatio) {
+      const dimensions = getImageDimensions();
+
+      if (!dimensions) return;
+
+      const ratio = dimensions.width / dimensions.height;
+
+      setResizeHeight(
+        Math.max(1, Math.round(width / ratio))
+      );
+    }
+  };
+
+  const handleResizeHeight = (value: number) => {
+    const height = Math.max(1, Math.min(12000, value));
+
+    setResizeHeight(height);
+
+    if (lockAspectRatio) {
+      const dimensions = getImageDimensions();
+
+      if (!dimensions) return;
+
+      const ratio = dimensions.width / dimensions.height;
+
+      setResizeWidth(
+        Math.max(1, Math.round(height * ratio))
+      );
+    }
+  };
+
+  const applyResize = () => {
+    const image = imageRef.current;
+
+    if (!image) {
+      alert("Please upload an image first.");
+      return;
+    }
+
+    if (cropMode) {
+      alert("Please finish or cancel cropping first.");
+      return;
+    }
+
+    if (
+      !Number.isInteger(resizeWidth) ||
+      !Number.isInteger(resizeHeight) ||
+      resizeWidth < 1 ||
+      resizeHeight < 1 ||
+      resizeWidth > 12000 ||
+      resizeHeight > 12000
+    ) {
+      alert("Enter valid dimensions between 1 and 12000 pixels.");
+      return;
+    }
+
+    const source = cropRegion ?? {
+      x: 0,
+      y: 0,
+      width: image.width,
+      height: image.height,
+    };
+
+    const resizeCanvas = document.createElement("canvas");
+
+    resizeCanvas.width = resizeWidth;
+    resizeCanvas.height = resizeHeight;
+
+    const ctx = resizeCanvas.getContext("2d");
+
+    if (!ctx) return;
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    ctx.drawImage(
+      image,
+      source.x,
+      source.y,
+      source.width,
+      source.height,
+      0,
+      0,
+      resizeWidth,
+      resizeHeight
+    );
+
+    const resizedImage = new Image();
+
+    resizedImage.onload = () => {
+      imageRef.current = resizedImage;
+
+      setCropRegion(null);
+      setCropSelection(null);
+      setCropMode(false);
+      setIsSelecting(false);
+      setCropStart(null);
+
+      setImageRevision((previous) => previous + 1);
+
+      const canvas = canvasRef.current;
+
+      if (!canvas) return;
+
+      const scale = Math.min(
+        canvas.clientWidth / resizedImage.width,
+        canvas.clientHeight / resizedImage.height,
+        1
+      );
+
+      setZoom(scale);
+
+      setOffset({
+        x:
+          (canvas.clientWidth -
+            resizedImage.width * scale) /
+          2,
+        y:
+          (canvas.clientHeight -
+            resizedImage.height * scale) /
+          2,
+      });
+    };
+
+    resizedImage.onerror = () => {
+      alert("Unable to resize this image.");
+    };
+
+    resizedImage.src = resizeCanvas.toDataURL("image/png");
+  };
+
+  // Restore the original uploaded image.
+  const resetResizeFields = () => {
+    const originalImage = originalImageRef.current;
+
+    if (!originalImage) {
+      alert("Original image is unavailable.");
+      return;
+    }
+
+    // Restore original image.
+    imageRef.current = originalImage;
+
+    // Clear crop state.
+    setCropRegion(null);
+    setCropSelection(null);
+    setCropStart(null);
+    setCropMode(false);
+    setIsSelecting(false);
+
+    // Restore original dimensions.
+    setResizeWidth(originalImage.width);
+    setResizeHeight(originalImage.height);
+    setLockAspectRatio(true);
+
+    // Refresh canvas.
+    setImageRevision((previous) => previous + 1);
+
+    // Fit original image inside workspace.
+    requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+
+      if (!canvas) return;
+
+      const scale = Math.min(
+        canvas.clientWidth / originalImage.width,
+        canvas.clientHeight / originalImage.height,
+        1
+      );
+
+      setZoom(scale);
+
+      setOffset({
+        x:
+          (canvas.clientWidth -
+            originalImage.width * scale) /
+          2,
+        y:
+          (canvas.clientHeight -
+            originalImage.height * scale) /
+          2,
+      });
+    });
   };
 
   // Reset view.
@@ -1009,6 +1220,106 @@ function App() {
                   </div>
                 </>
               )}
+
+              {/* Resize panel */}
+              <div className="resize-section">
+                <div className="resize-heading">
+                  <h4>Resize Image</h4>
+
+                  <button
+                    className="resize-lock-button"
+                    title={
+                      lockAspectRatio
+                        ? "Unlock aspect ratio"
+                        : "Lock aspect ratio"
+                    }
+                    onClick={() =>
+                      setLockAspectRatio((previous) => !previous)
+                    }
+                  >
+                    {lockAspectRatio ? (
+                      <Lock size={15} />
+                    ) : (
+                      <Unlock size={15} />
+                    )}
+
+                    {lockAspectRatio ? "Locked" : "Unlocked"}
+                  </button>
+                </div>
+
+                <label className="resize-label">
+                  Width (px)
+                  <input
+                    type="number"
+                    min="1"
+                    max="12000"
+                    value={resizeWidth || ""}
+                    onChange={(event) =>
+                      handleResizeWidth(Number(event.target.value))
+                    }
+                  />
+                </label>
+
+                <label className="resize-label">
+                  Height (px)
+                  <input
+                    type="number"
+                    min="1"
+                    max="12000"
+                    value={resizeHeight || ""}
+                    onChange={(event) =>
+                      handleResizeHeight(Number(event.target.value))
+                    }
+                  />
+                </label>
+
+                <div className="resize-presets">
+                  <span>Presets</span>
+
+                  <button
+                    onClick={() => {
+                      setResizeWidth(640);
+                      setResizeHeight(480);
+                    }}
+                  >
+                    640 × 480
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setResizeWidth(1280);
+                      setResizeHeight(720);
+                    }}
+                  >
+                    1280 × 720
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setResizeWidth(1920);
+                      setResizeHeight(1080);
+                    }}
+                  >
+                    1920 × 1080
+                  </button>
+                </div>
+
+                <div className="resize-buttons">
+                  <button
+                    className="resize-reset"
+                    onClick={resetResizeFields}
+                  >
+                    Reset
+                  </button>
+
+                  <button
+                    className="resize-apply"
+                    onClick={applyResize}
+                  >
+                    Apply Resize
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </aside>
