@@ -457,3 +457,98 @@ button:disabled {
 .workspace-header h2 {
   color: #e8eaf0;
 }
+
+
+.workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.crop-apply-button,
+.crop-cancel-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 13px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.crop-apply-button {
+  color: white;
+  background: #765cff;
+  border: 1px solid #765cff;
+}
+
+.crop-apply-button:hover {
+  background: #886fff;
+}
+
+.crop-apply-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.crop-cancel-button {
+  color: #d6d8e1;
+  background: #292e39;
+  border: 1px solid #414653;
+}
+
+.crop-cancel-button:hover {
+  background: #383e4b;
+}
+
+.crop-cursor {
+  cursor: crosshair !important;
+}
+
+@media (max-width: 650px) {
+  .workspace-actions {
+    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .crop-apply-button,
+  .crop-cancel-button {
+    padding: 8px;
+    font-size: 10px;
+  }
+}
+
+.transform-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.transform-actions .control-button {
+  min-width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transform-actions .control-button:hover {
+  color: #ffffff;
+  background: #5542a8;
+}
+
+.workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 700px) {
+  .transform-actions {
+    flex-wrap: wrap;
+  }
+}
