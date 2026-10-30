@@ -51,13 +51,58 @@ type TransformAction =
   | "flip-horizontal"
   | "flip-vertical";
 
+type PresetName =
+  | "original"
+  | "vivid"
+  | "warm"
+  | "cool"
+  | "grayscale"
+  | "vintage"
+  | "custom";
+
+const presets = {
+  original: {
+    brightness: 100,
+    contrast: 100,
+    saturation: 100,
+    blur: 0,
+  },
+  vivid: {
+    brightness: 110,
+    contrast: 120,
+    saturation: 150,
+    blur: 0,
+  },
+  warm: {
+    brightness: 105,
+    contrast: 105,
+    saturation: 115,
+    blur: 0,
+  },
+  cool: {
+    brightness: 105,
+    contrast: 110,
+    saturation: 90,
+    blur: 0,
+  },
+  grayscale: {
+    brightness: 100,
+    contrast: 110,
+    saturation: 0,
+    blur: 0,
+  },
+  vintage: {
+    brightness: 105,
+    contrast: 90,
+    saturation: 75,
+    blur: 0,
+  },
+};
+
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
-
-  // Keeps the original uploaded image safe for Reset.
   const originalImageRef = useRef<HTMLImageElement | null>(null);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [imageName, setImageName] = useState("");
@@ -70,12 +115,12 @@ function App() {
     y: 0,
   });
 
+  // Crop states
   const [cropMode, setCropMode] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [cropStart, setCropStart] = useState<Point | null>(null);
   const [cropSelection, setCropSelection] =
     useState<Selection | null>(null);
-
   const [cropRegion, setCropRegion] =
     useState<CropRegion | null>(null);
 
@@ -86,6 +131,15 @@ function App() {
   const [resizeHeight, setResizeHeight] = useState(0);
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
 
+  // Image adjustment states
+  const [brightness, setBrightness] = useState(100);
+  const [contrast, setContrast] = useState(100);
+  const [saturation, setSaturation] = useState(100);
+  const [blur, setBlur] = useState(0);
+  const [activePreset, setActivePreset] =
+    useState<PresetName>("original");
+
+  // Get current image dimensions.
   const getImageDimensions = () => {
     const image = imageRef.current;
 
@@ -102,7 +156,27 @@ function App() {
         };
   };
 
-  // Update resize fields whenever image dimensions change.
+  // Reset image adjustments.
+  const resetAdjustments = () => {
+    setBrightness(100);
+    setContrast(100);
+    setSaturation(100);
+    setBlur(0);
+    setActivePreset("original");
+  };
+
+  // Apply a preset.
+  const applyPreset = (name: Exclude<PresetName, "custom">) => {
+    const preset = presets[name];
+
+    setBrightness(preset.brightness);
+    setContrast(preset.contrast);
+    setSaturation(preset.saturation);
+    setBlur(preset.blur);
+    setActivePreset(name);
+  };
+
+  // Update resize dimensions when image changes.
   useEffect(() => {
     const dimensions = getImageDimensions();
 
@@ -112,6 +186,7 @@ function App() {
     }
   }, [imageRevision, cropRegion]);
 
+  // Convert mouse position to canvas coordinates.
   const getCanvasPoint = (
     event: React.MouseEvent<HTMLCanvasElement>
   ): Point => {
@@ -166,6 +241,12 @@ function App() {
     const drawWidth = source.width * zoom;
     const drawHeight = source.height * zoom;
 
+    const filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
+
+    // Draw adjusted image.
+    ctx.save();
+    ctx.filter = filter;
+
     ctx.drawImage(
       image,
       source.x,
@@ -177,6 +258,8 @@ function App() {
       drawWidth,
       drawHeight
     );
+
+    ctx.restore();
 
     // Crop selection overlay.
     if (cropMode && cropSelection) {
@@ -199,6 +282,9 @@ function App() {
         selectionHeight
       );
 
+      // Redraw selected area with adjustments.
+      ctx.filter = filter;
+
       ctx.drawImage(
         image,
         source.x,
@@ -210,6 +296,8 @@ function App() {
         drawWidth,
         drawHeight
       );
+
+      ctx.filter = "none";
 
       ctx.strokeStyle = "#9b85ff";
       ctx.lineWidth = 2;
@@ -240,6 +328,7 @@ function App() {
     }
   };
 
+  // Redraw canvas whenever its display properties change.
   useEffect(() => {
     drawCanvas();
   }, [
@@ -250,8 +339,13 @@ function App() {
     cropMode,
     cropSelection,
     imageRevision,
+    brightness,
+    contrast,
+    saturation,
+    blur,
   ]);
 
+  // Handle browser resizing.
   useEffect(() => {
     const handleResize = () => drawCanvas();
 
@@ -311,7 +405,6 @@ function App() {
     const url = URL.createObjectURL(file);
 
     image.onload = () => {
-      // Save both current and original image references.
       imageRef.current = image;
       originalImageRef.current = image;
 
@@ -324,6 +417,8 @@ function App() {
       setCropMode(false);
       setIsSelecting(false);
       setCropStart(null);
+
+      resetAdjustments();
 
       setImageRevision((previous) => previous + 1);
 
@@ -406,7 +501,6 @@ function App() {
   ) => {
     if (cropMode && isSelecting && cropStart) {
       const point = getCanvasPoint(event);
-
       const image = imageRef.current;
 
       if (!image) return;
@@ -420,10 +514,8 @@ function App() {
 
       const imageLeft = offset.x;
       const imageTop = offset.y;
-      const imageRight =
-        imageLeft + source.width * zoom;
-      const imageBottom =
-        imageTop + source.height * zoom;
+      const imageRight = imageLeft + source.width * zoom;
+      const imageBottom = imageTop + source.height * zoom;
 
       const currentX = Math.min(
         imageRight,
@@ -562,12 +654,10 @@ function App() {
 
       setOffset({
         x:
-          (canvas.clientWidth -
-            nextCrop.width * newZoom) /
+          (canvas.clientWidth - nextCrop.width * newZoom) /
           2,
         y:
-          (canvas.clientHeight -
-            nextCrop.height * newZoom) /
+          (canvas.clientHeight - nextCrop.height * newZoom) /
           2,
       });
     });
@@ -636,6 +726,7 @@ function App() {
       ctx.scale(1, -1);
     }
 
+    // Keep adjustments separate from the underlying image.
     ctx.drawImage(
       image,
       source.x,
@@ -774,6 +865,8 @@ function App() {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
+    // Resize the original pixel data.
+    // Adjustment filters remain separate in React state.
     ctx.drawImage(
       image,
       source.x,
@@ -830,7 +923,7 @@ function App() {
     resizedImage.src = resizeCanvas.toDataURL("image/png");
   };
 
-  // Restore the original uploaded image.
+  // Restore original uploaded image.
   const resetResizeFields = () => {
     const originalImage = originalImageRef.current;
 
@@ -839,25 +932,22 @@ function App() {
       return;
     }
 
-    // Restore original image.
     imageRef.current = originalImage;
 
-    // Clear crop state.
     setCropRegion(null);
     setCropSelection(null);
     setCropStart(null);
     setCropMode(false);
     setIsSelecting(false);
 
-    // Restore original dimensions.
     setResizeWidth(originalImage.width);
     setResizeHeight(originalImage.height);
     setLockAspectRatio(true);
 
-    // Refresh canvas.
+    resetAdjustments();
+
     setImageRevision((previous) => previous + 1);
 
-    // Fit original image inside workspace.
     requestAnimationFrame(() => {
       const canvas = canvasRef.current;
 
@@ -884,7 +974,7 @@ function App() {
     });
   };
 
-  // Reset view.
+  // Reset canvas view.
   const resetView = () => {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
@@ -952,7 +1042,14 @@ function App() {
           <button
             className="tool"
             title="Adjustments"
-            disabled
+            onClick={() => {
+              document
+                .querySelector(".adjustment-section")
+                ?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+            }}
           >
             <SlidersHorizontal />
           </button>
@@ -981,7 +1078,7 @@ function App() {
             </div>
 
             <div className="workspace-actions">
-              {/* Rotate and flip controls */}
+              {/* Rotate and flip */}
               {imageName && !cropMode && (
                 <div className="transform-actions">
                   <button
@@ -1166,9 +1263,7 @@ function App() {
 
               <div className="property-row">
                 <span>Zoom</span>
-                <strong>
-                  {Math.round(zoom * 100)}%
-                </strong>
+                <strong>{Math.round(zoom * 100)}%</strong>
               </div>
 
               <div className="property-row">
@@ -1221,6 +1316,144 @@ function App() {
                 </>
               )}
 
+              {/* Image Adjustments */}
+              <div className="adjustment-section">
+                <div className="adjustment-heading">
+                  <h4>Image Adjustments</h4>
+
+                  <button
+                    className="adjustment-reset"
+                    onClick={resetAdjustments}
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                {/* Presets */}
+                <div className="preset-section">
+                  <span>Presets</span>
+
+                  <div className="preset-grid">
+                    {(
+                      [
+                        "original",
+                        "vivid",
+                        "warm",
+                        "cool",
+                        "grayscale",
+                        "vintage",
+                      ] as const
+                    ).map((preset) => (
+                      <button
+                        key={preset}
+                        className={
+                          activePreset === preset
+                            ? "preset-button selected"
+                            : "preset-button"
+                        }
+                        onClick={() => applyPreset(preset)}
+                      >
+                        {preset.charAt(0).toUpperCase() +
+                          preset.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Brightness */}
+                <div className="adjustment-control">
+                  <div className="adjustment-label">
+                    <label htmlFor="brightness">
+                      Brightness
+                    </label>
+                    <strong>{brightness}%</strong>
+                  </div>
+
+                  <input
+                    id="brightness"
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={brightness}
+                    onChange={(event) => {
+                      setBrightness(
+                        Number(event.target.value)
+                      );
+                      setActivePreset("custom");
+                    }}
+                  />
+                </div>
+
+                {/* Contrast */}
+                <div className="adjustment-control">
+                  <div className="adjustment-label">
+                    <label htmlFor="contrast">
+                      Contrast
+                    </label>
+                    <strong>{contrast}%</strong>
+                  </div>
+
+                  <input
+                    id="contrast"
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={contrast}
+                    onChange={(event) => {
+                      setContrast(
+                        Number(event.target.value)
+                      );
+                      setActivePreset("custom");
+                    }}
+                  />
+                </div>
+
+                {/* Saturation */}
+                <div className="adjustment-control">
+                  <div className="adjustment-label">
+                    <label htmlFor="saturation">
+                      Saturation
+                    </label>
+                    <strong>{saturation}%</strong>
+                  </div>
+
+                  <input
+                    id="saturation"
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={saturation}
+                    onChange={(event) => {
+                      setSaturation(
+                        Number(event.target.value)
+                      );
+                      setActivePreset("custom");
+                    }}
+                  />
+                </div>
+
+                {/* Blur */}
+                <div className="adjustment-control">
+                  <div className="adjustment-label">
+                    <label htmlFor="blur">Blur</label>
+                    <strong>{blur}px</strong>
+                  </div>
+
+                  <input
+                    id="blur"
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={blur}
+                    onChange={(event) => {
+                      setBlur(Number(event.target.value));
+                      setActivePreset("custom");
+                    }}
+                  />
+                </div>
+              </div>
+
               {/* Resize panel */}
               <div className="resize-section">
                 <div className="resize-heading">
@@ -1255,7 +1488,9 @@ function App() {
                     max="12000"
                     value={resizeWidth || ""}
                     onChange={(event) =>
-                      handleResizeWidth(Number(event.target.value))
+                      handleResizeWidth(
+                        Number(event.target.value)
+                      )
                     }
                   />
                 </label>
@@ -1268,7 +1503,9 @@ function App() {
                     max="12000"
                     value={resizeHeight || ""}
                     onChange={(event) =>
-                      handleResizeHeight(Number(event.target.value))
+                      handleResizeHeight(
+                        Number(event.target.value)
+                      )
                     }
                   />
                 </label>
