@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent, MouseEvent } from "react";
 import {
   ImagePlus,
   Upload,
@@ -23,6 +24,14 @@ import {
   X,
   Lock,
   Unlock,
+  Type,
+  Square,
+  Circle,
+  Trash2,
+  Eye,
+  EyeOff,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import "./App.css";
 
@@ -59,6 +68,25 @@ type PresetName =
   | "grayscale"
   | "vintage"
   | "custom";
+
+type LayerType = "text" | "rectangle" | "circle" | "image";
+
+type EditorLayer = {
+  id: string;
+  name: string;
+  type: LayerType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  text?: string;
+  fontSize?: number;
+  fill: string;
+  image?: HTMLImageElement;
+};
 
 const presets = {
   original: {
@@ -104,6 +132,15 @@ function App() {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const layerImageInputRef = useRef<HTMLInputElement>(null);
+
+  const layerDragRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    layerX: number;
+    layerY: number;
+  } | null>(null);
 
   const [imageName, setImageName] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -138,6 +175,20 @@ function App() {
   const [blur, setBlur] = useState(0);
   const [activePreset, setActivePreset] =
     useState<PresetName>("original");
+
+  // Layer management
+  const [layers, setLayers] = useState<EditorLayer[]>([]);
+  const [selectedLayerId, setSelectedLayerId] =
+    useState<string | null>(null);
+  const [activePanel, setActivePanel] =
+    useState<"properties" | "layers">("properties");
+
+  const [layerDragStart, setLayerDragStart] =
+    useState<Point | null>(null);
+
+  const selectedLayer = layers.find(
+    (layer) => layer.id === selectedLayerId
+  );
 
   // Get current image dimensions.
   const getImageDimensions = () => {
@@ -188,7 +239,7 @@ function App() {
 
   // Convert mouse position to canvas coordinates.
   const getCanvasPoint = (
-    event: React.MouseEvent<HTMLCanvasElement>
+    event: MouseEvent<HTMLCanvasElement>
   ): Point => {
     const rect = event.currentTarget.getBoundingClientRect();
 
@@ -198,7 +249,7 @@ function App() {
     };
   };
 
-  // Draw image and crop selection.
+  // Draw background image, layers, and crop selection.
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
@@ -243,7 +294,7 @@ function App() {
 
     const filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
 
-    // Draw adjusted image.
+    // Draw adjusted background image.
     ctx.save();
     ctx.filter = filter;
 
@@ -260,6 +311,98 @@ function App() {
     );
 
     ctx.restore();
+
+    // Draw all visible layers.
+    layers.forEach((layer) => {
+      if (!layer.visible) return;
+
+      const layerX = offset.x + layer.x * zoom;
+      const layerY = offset.y + layer.y * zoom;
+      const layerWidth = layer.width * zoom;
+      const layerHeight = layer.height * zoom;
+
+      ctx.save();
+      ctx.globalAlpha = layer.opacity;
+
+      if (layer.type === "text") {
+        ctx.fillStyle = layer.fill;
+        ctx.font = `${(layer.fontSize ?? 32) * zoom}px Arial`;
+        ctx.textBaseline = "top";
+
+        ctx.fillText(
+          layer.text ?? "",
+          layerX,
+          layerY,
+          layerWidth
+        );
+      }
+
+      if (layer.type === "rectangle") {
+        ctx.fillStyle = layer.fill;
+        ctx.fillRect(
+          layerX,
+          layerY,
+          layerWidth,
+          layerHeight
+        );
+      }
+
+      if (layer.type === "circle") {
+        ctx.fillStyle = layer.fill;
+        ctx.beginPath();
+
+        ctx.ellipse(
+          layerX + layerWidth / 2,
+          layerY + layerHeight / 2,
+          layerWidth / 2,
+          layerHeight / 2,
+          0,
+          0,
+          Math.PI * 2
+        );
+
+        ctx.fill();
+      }
+
+      if (layer.type === "image" && layer.image) {
+        ctx.drawImage(
+          layer.image,
+          layerX,
+          layerY,
+          layerWidth,
+          layerHeight
+        );
+      }
+
+      ctx.restore();
+    });
+
+    // Draw selected layer outline.
+    const currentSelectedLayer = layers.find(
+      (layer) => layer.id === selectedLayerId
+    );
+
+    if (
+      currentSelectedLayer &&
+      currentSelectedLayer.visible
+    ) {
+      ctx.save();
+
+      ctx.strokeStyle = "#9b85ff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+
+      ctx.strokeRect(
+        offset.x + currentSelectedLayer.x * zoom,
+        offset.y + currentSelectedLayer.y * zoom,
+        currentSelectedLayer.width * zoom,
+        currentSelectedLayer.height * zoom
+      );
+
+      ctx.setLineDash([]);
+
+      ctx.restore();
+    }
 
     // Crop selection overlay.
     if (cropMode && cropSelection) {
@@ -282,7 +425,6 @@ function App() {
         selectionHeight
       );
 
-      // Redraw selected area with adjustments.
       ctx.filter = filter;
 
       ctx.drawImage(
@@ -328,7 +470,7 @@ function App() {
     }
   };
 
-  // Redraw canvas whenever its display properties change.
+  // Redraw canvas whenever display properties change.
   useEffect(() => {
     drawCanvas();
   }, [
@@ -343,6 +485,8 @@ function App() {
     contrast,
     saturation,
     blur,
+    layers,
+    selectedLayerId,
   ]);
 
   // Handle browser resizing.
@@ -383,9 +527,9 @@ function App() {
     });
   };
 
-  // Upload image.
+  // Upload background image.
   const uploadImage = (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0];
 
@@ -417,6 +561,9 @@ function App() {
       setCropMode(false);
       setIsSelecting(false);
       setCropStart(null);
+
+      setLayers([]);
+      setSelectedLayerId(null);
 
       resetAdjustments();
 
@@ -457,6 +604,70 @@ function App() {
     event.target.value = "";
   };
 
+  // Upload an additional image as a layer.
+  const uploadLayerImage = (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (
+      !["image/png", "image/jpeg", "image/webp"].includes(
+        file.type
+      )
+    ) {
+      alert("Please upload a PNG, JPG, or WebP image.");
+      event.target.value = "";
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      const maxDimension = 400;
+      const scale = Math.min(
+        1,
+        maxDimension / Math.max(image.width, image.height)
+      );
+
+      const width = Math.round(image.width * scale);
+      const height = Math.round(image.height * scale);
+
+      const id = crypto.randomUUID();
+
+      const newLayer: EditorLayer = {
+        id,
+        name: file.name,
+        type: "image",
+        x: 40,
+        y: 40,
+        width,
+        height,
+        visible: true,
+        locked: false,
+        opacity: 1,
+        fill: "#ffffff",
+        image,
+      };
+
+      setLayers((previous) => [...previous, newLayer]);
+      setSelectedLayerId(id);
+      setActivePanel("layers");
+
+      URL.revokeObjectURL(url);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      alert("Unable to load this image layer.");
+    };
+
+    image.src = url;
+    event.target.value = "";
+  };
+
   // Zoom.
   const handleZoom = (direction: number) => {
     const nextZoom = Math.min(
@@ -467,9 +678,149 @@ function App() {
     setZoom(nextZoom);
   };
 
+  // Create text layer.
+  const addTextLayer = () => {
+    if (!imageRef.current) {
+      alert("Upload a background image first.");
+      return;
+    }
+
+    const id = crypto.randomUUID();
+
+    const layer: EditorLayer = {
+      id,
+      name: "Text Layer",
+      type: "text",
+      x: 40,
+      y: 40,
+      width: 240,
+      height: 60,
+      visible: true,
+      locked: false,
+      opacity: 1,
+      text: "Your text here",
+      fontSize: 32,
+      fill: "#ffffff",
+    };
+
+    setLayers((previous) => [...previous, layer]);
+    setSelectedLayerId(id);
+    setActivePanel("layers");
+  };
+
+  // Create shape layer.
+  const addShapeLayer = (
+    type: "rectangle" | "circle"
+  ) => {
+    if (!imageRef.current) {
+      alert("Upload a background image first.");
+      return;
+    }
+
+    const id = crypto.randomUUID();
+
+    const layer: EditorLayer = {
+      id,
+      name: type === "rectangle" ? "Rectangle" : "Circle",
+      type,
+      x: 60,
+      y: 60,
+      width: 150,
+      height: 100,
+      visible: true,
+      locked: false,
+      opacity: 1,
+      fill: "#8b78ff",
+    };
+
+    setLayers((previous) => [...previous, layer]);
+    setSelectedLayerId(id);
+    setActivePanel("layers");
+  };
+
+  // Update a layer.
+  const updateLayer = (
+    id: string,
+    updates: Partial<EditorLayer>
+  ) => {
+    setLayers((previous) =>
+      previous.map((layer) =>
+        layer.id === id ? { ...layer, ...updates } : layer
+      )
+    );
+  };
+
+  // Delete selected layer.
+  const deleteSelectedLayer = () => {
+    if (!selectedLayerId) return;
+
+    setLayers((previous) =>
+      previous.filter(
+        (layer) => layer.id !== selectedLayerId
+      )
+    );
+
+    setSelectedLayerId(null);
+  };
+
+  // Change layer stacking order.
+  const moveLayerOrder = (
+    id: string,
+    direction: -1 | 1
+  ) => {
+    setLayers((previous) => {
+      const index = previous.findIndex(
+        (layer) => layer.id === id
+      );
+
+      const nextIndex = index + direction;
+
+      if (
+        index < 0 ||
+        nextIndex < 0 ||
+        nextIndex >= previous.length
+      ) {
+        return previous;
+      }
+
+      const updated = [...previous];
+
+      [updated[index], updated[nextIndex]] = [
+        updated[nextIndex],
+        updated[index],
+      ];
+
+      return updated;
+    });
+  };
+
+  // Find the topmost layer under the pointer.
+  const findLayerAtPoint = (point: Point) => {
+    const imagePoint = {
+      x: (point.x - offset.x) / zoom,
+      y: (point.y - offset.y) / zoom,
+    };
+
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const layer = layers[i];
+
+      if (!layer.visible) continue;
+
+      const inside =
+        imagePoint.x >= layer.x &&
+        imagePoint.x <= layer.x + layer.width &&
+        imagePoint.y >= layer.y &&
+        imagePoint.y <= layer.y + layer.height;
+
+      if (inside) return layer;
+    }
+
+    return null;
+  };
+
   // Mouse down.
   const handleMouseDown = (
-    event: React.MouseEvent<HTMLCanvasElement>
+    event: MouseEvent<HTMLCanvasElement>
   ) => {
     const point = getCanvasPoint(event);
 
@@ -487,6 +838,29 @@ function App() {
       return;
     }
 
+    // Select and move a layer if one is under the pointer.
+    const clickedLayer = findLayerAtPoint(point);
+
+    if (clickedLayer) {
+      setSelectedLayerId(clickedLayer.id);
+
+      if (!clickedLayer.locked) {
+        layerDragRef.current = {
+          id: clickedLayer.id,
+          startX: point.x,
+          startY: point.y,
+          layerX: clickedLayer.x,
+          layerY: clickedLayer.y,
+        };
+
+        setLayerDragStart(point);
+        return;
+      }
+    } else {
+      setSelectedLayerId(null);
+    }
+
+    // Otherwise pan the canvas.
     setIsDragging(true);
 
     setLastPosition({
@@ -497,10 +871,11 @@ function App() {
 
   // Mouse move.
   const handleMouseMove = (
-    event: React.MouseEvent<HTMLCanvasElement>
+    event: MouseEvent<HTMLCanvasElement>
   ) => {
+    const point = getCanvasPoint(event);
+
     if (cropMode && isSelecting && cropStart) {
-      const point = getCanvasPoint(event);
       const image = imageRef.current;
 
       if (!image) return;
@@ -547,6 +922,21 @@ function App() {
       return;
     }
 
+    // Move selected layer.
+    if (layerDragRef.current) {
+      const drag = layerDragRef.current;
+
+      const dx = (point.x - drag.startX) / zoom;
+      const dy = (point.y - drag.startY) / zoom;
+
+      updateLayer(drag.id, {
+        x: Math.max(0, drag.layerX + dx),
+        y: Math.max(0, drag.layerY + dy),
+      });
+
+      return;
+    }
+
     if (!isDragging) return;
 
     const dx = event.clientX - lastPosition.x;
@@ -566,6 +956,8 @@ function App() {
   const stopDragging = () => {
     setIsDragging(false);
     setIsSelecting(false);
+    layerDragRef.current = null;
+    setLayerDragStart(null);
   };
 
   // Crop functions.
@@ -726,7 +1118,6 @@ function App() {
       ctx.scale(1, -1);
     }
 
-    // Keep adjustments separate from the underlying image.
     ctx.drawImage(
       image,
       source.x,
@@ -865,8 +1256,6 @@ function App() {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    // Resize the original pixel data.
-    // Adjustment filters remain separate in React state.
     ctx.drawImage(
       image,
       source.x,
@@ -995,19 +1384,11 @@ function App() {
         </div>
 
         <div className="topbar-actions">
-          <button
-            className="icon-button"
-            title="Undo"
-            disabled
-          >
+          <button className="icon-button" title="Undo" disabled>
             <Undo2 />
           </button>
 
-          <button
-            className="icon-button"
-            title="Redo"
-            disabled
-          >
+          <button className="icon-button" title="Redo" disabled>
             <Redo2 />
           </button>
 
@@ -1043,6 +1424,8 @@ function App() {
             className="tool"
             title="Adjustments"
             onClick={() => {
+              setActivePanel("properties");
+
               document
                 .querySelector(".adjustment-section")
                 ?.scrollIntoView({
@@ -1055,9 +1438,13 @@ function App() {
           </button>
 
           <button
-            className="tool"
+            className={
+              activePanel === "layers"
+                ? "tool active"
+                : "tool"
+            }
             title="Layers"
-            disabled
+            onClick={() => setActivePanel("layers")}
           >
             <Layers />
           </button>
@@ -1078,7 +1465,6 @@ function App() {
             </div>
 
             <div className="workspace-actions">
-              {/* Rotate and flip */}
               {imageName && !cropMode && (
                 <div className="transform-actions">
                   <button
@@ -1123,7 +1509,45 @@ function App() {
                 </div>
               )}
 
-              {/* Crop controls */}
+              {imageName && !cropMode && (
+                <>
+                  <button
+                    className="control-button"
+                    title="Add text layer"
+                    onClick={addTextLayer}
+                  >
+                    <Type size={16} />
+                    Text
+                  </button>
+
+                  <button
+                    className="control-button"
+                    title="Add rectangle"
+                    onClick={() => addShapeLayer("rectangle")}
+                  >
+                    <Square size={16} />
+                  </button>
+
+                  <button
+                    className="control-button"
+                    title="Add circle"
+                    onClick={() => addShapeLayer("circle")}
+                  >
+                    <Circle size={16} />
+                  </button>
+
+                  <button
+                    className="control-button"
+                    title="Add image layer"
+                    onClick={() =>
+                      layerImageInputRef.current?.click()
+                    }
+                  >
+                    <ImagePlus size={16} />
+                  </button>
+                </>
+              )}
+
               {cropMode && (
                 <>
                   <button
@@ -1173,6 +1597,14 @@ function App() {
               hidden
               onChange={uploadImage}
             />
+
+            <input
+              ref={layerImageInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={uploadLayerImage}
+            />
           </div>
 
           {/* Canvas */}
@@ -1183,7 +1615,7 @@ function App() {
                 className={
                   cropMode
                     ? "canvas crop-cursor"
-                    : isDragging
+                    : isDragging || layerDragStart
                       ? "canvas dragging"
                       : "canvas"
                 }
@@ -1237,326 +1669,596 @@ function App() {
           </div>
         </section>
 
-        {/* Right properties panel */}
+        {/* Right panel */}
         <aside className="right-panel">
           <div className="panel-heading">
-            <h3>Properties</h3>
+            <div className="panel-tabs">
+              <button
+                className={
+                  activePanel === "properties"
+                    ? "panel-tab active"
+                    : "panel-tab"
+                }
+                onClick={() => setActivePanel("properties")}
+              >
+                Properties
+              </button>
+
+              <button
+                className={
+                  activePanel === "layers"
+                    ? "panel-tab active"
+                    : "panel-tab"
+                }
+                onClick={() => setActivePanel("layers")}
+              >
+                Layers ({layers.length})
+              </button>
+            </div>
           </div>
 
-          {!imageName ? (
-            <div className="empty-panel">
-              <ImagePlus size={30} />
-              <p>No image selected</p>
-              <span>
-                Upload an image to see its properties.
-              </span>
-            </div>
-          ) : (
-            <div className="image-properties">
-              <div className="property-preview">
-                <ImageIcon size={28} />
-              </div>
+          {/* Properties panel */}
+          {activePanel === "properties" && (
+            <>
+              {!imageName ? (
+                <div className="empty-panel">
+                  <ImagePlus size={30} />
+                  <p>No image selected</p>
+                  <span>
+                    Upload an image to see its properties.
+                  </span>
+                </div>
+              ) : (
+                <div className="image-properties">
+                  <div className="property-preview">
+                    <ImageIcon size={28} />
+                  </div>
 
-              <h4>Image</h4>
+                  <h4>Image</h4>
 
-              <p className="filename">{imageName}</p>
+                  <p className="filename">{imageName}</p>
 
-              <div className="property-row">
-                <span>Zoom</span>
-                <strong>{Math.round(zoom * 100)}%</strong>
-              </div>
-
-              <div className="property-row">
-                <span>Position X</span>
-                <strong>{Math.round(offset.x)} px</strong>
-              </div>
-
-              <div className="property-row">
-                <span>Position Y</span>
-                <strong>{Math.round(offset.y)} px</strong>
-              </div>
-
-              {(() => {
-                const dimensions = getImageDimensions();
-
-                return dimensions ? (
-                  <>
-                    <div className="property-row">
-                      <span>Image width</span>
-                      <strong>
-                        {Math.round(dimensions.width)} px
-                      </strong>
-                    </div>
-
-                    <div className="property-row">
-                      <span>Image height</span>
-                      <strong>
-                        {Math.round(dimensions.height)} px
-                      </strong>
-                    </div>
-                  </>
-                ) : null;
-              })()}
-
-              {cropRegion && (
-                <>
                   <div className="property-row">
-                    <span>Crop width</span>
-                    <strong>
-                      {Math.round(cropRegion.width)} px
-                    </strong>
+                    <span>Zoom</span>
+                    <strong>{Math.round(zoom * 100)}%</strong>
                   </div>
 
                   <div className="property-row">
-                    <span>Crop height</span>
-                    <strong>
-                      {Math.round(cropRegion.height)} px
-                    </strong>
+                    <span>Position X</span>
+                    <strong>{Math.round(offset.x)} px</strong>
                   </div>
-                </>
+
+                  <div className="property-row">
+                    <span>Position Y</span>
+                    <strong>{Math.round(offset.y)} px</strong>
+                  </div>
+
+                  {(() => {
+                    const dimensions = getImageDimensions();
+
+                    return dimensions ? (
+                      <>
+                        <div className="property-row">
+                          <span>Image width</span>
+                          <strong>
+                            {Math.round(dimensions.width)} px
+                          </strong>
+                        </div>
+
+                        <div className="property-row">
+                          <span>Image height</span>
+                          <strong>
+                            {Math.round(dimensions.height)} px
+                          </strong>
+                        </div>
+                      </>
+                    ) : null;
+                  })()}
+
+                  {cropRegion && (
+                    <>
+                      <div className="property-row">
+                        <span>Crop width</span>
+                        <strong>
+                          {Math.round(cropRegion.width)} px
+                        </strong>
+                      </div>
+
+                      <div className="property-row">
+                        <span>Crop height</span>
+                        <strong>
+                          {Math.round(cropRegion.height)} px
+                        </strong>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Image adjustments */}
+                  <div className="adjustment-section">
+                    <div className="adjustment-heading">
+                      <h4>Image Adjustments</h4>
+
+                      <button
+                        className="adjustment-reset"
+                        onClick={resetAdjustments}
+                      >
+                        Reset
+                      </button>
+                    </div>
+
+                    <div className="preset-section">
+                      <span>Presets</span>
+
+                      <div className="preset-grid">
+                        {(
+                          [
+                            "original",
+                            "vivid",
+                            "warm",
+                            "cool",
+                            "grayscale",
+                            "vintage",
+                          ] as const
+                        ).map((preset) => (
+                          <button
+                            key={preset}
+                            className={
+                              activePreset === preset
+                                ? "preset-button selected"
+                                : "preset-button"
+                            }
+                            onClick={() => applyPreset(preset)}
+                          >
+                            {preset.charAt(0).toUpperCase() +
+                              preset.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="adjustment-control">
+                      <div className="adjustment-label">
+                        <label htmlFor="brightness">
+                          Brightness
+                        </label>
+                        <strong>{brightness}%</strong>
+                      </div>
+
+                      <input
+                        id="brightness"
+                        type="range"
+                        min="0"
+                        max="200"
+                        value={brightness}
+                        onChange={(event) => {
+                          setBrightness(
+                            Number(event.target.value)
+                          );
+                          setActivePreset("custom");
+                        }}
+                      />
+                    </div>
+
+                    <div className="adjustment-control">
+                      <div className="adjustment-label">
+                        <label htmlFor="contrast">
+                          Contrast
+                        </label>
+                        <strong>{contrast}%</strong>
+                      </div>
+
+                      <input
+                        id="contrast"
+                        type="range"
+                        min="0"
+                        max="200"
+                        value={contrast}
+                        onChange={(event) => {
+                          setContrast(
+                            Number(event.target.value)
+                          );
+                          setActivePreset("custom");
+                        }}
+                      />
+                    </div>
+
+                    <div className="adjustment-control">
+                      <div className="adjustment-label">
+                        <label htmlFor="saturation">
+                          Saturation
+                        </label>
+                        <strong>{saturation}%</strong>
+                      </div>
+
+                      <input
+                        id="saturation"
+                        type="range"
+                        min="0"
+                        max="200"
+                        value={saturation}
+                        onChange={(event) => {
+                          setSaturation(
+                            Number(event.target.value)
+                          );
+                          setActivePreset("custom");
+                        }}
+                      />
+                    </div>
+
+                    <div className="adjustment-control">
+                      <div className="adjustment-label">
+                        <label htmlFor="blur">Blur</label>
+                        <strong>{blur}px</strong>
+                      </div>
+
+                      <input
+                        id="blur"
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={blur}
+                        onChange={(event) => {
+                          setBlur(Number(event.target.value));
+                          setActivePreset("custom");
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Resize panel */}
+                  <div className="resize-section">
+                    <div className="resize-heading">
+                      <h4>Resize Image</h4>
+
+                      <button
+                        className="resize-lock-button"
+                        title={
+                          lockAspectRatio
+                            ? "Unlock aspect ratio"
+                            : "Lock aspect ratio"
+                        }
+                        onClick={() =>
+                          setLockAspectRatio(
+                            (previous) => !previous
+                          )
+                        }
+                      >
+                        {lockAspectRatio ? (
+                          <Lock size={15} />
+                        ) : (
+                          <Unlock size={15} />
+                        )}
+
+                        {lockAspectRatio ? "Locked" : "Unlocked"}
+                      </button>
+                    </div>
+
+                    <label className="resize-label">
+                      Width (px)
+                      <input
+                        type="number"
+                        min="1"
+                        max="12000"
+                        value={resizeWidth || ""}
+                        onChange={(event) =>
+                          handleResizeWidth(
+                            Number(event.target.value)
+                          )
+                        }
+                      />
+                    </label>
+
+                    <label className="resize-label">
+                      Height (px)
+                      <input
+                        type="number"
+                        min="1"
+                        max="12000"
+                        value={resizeHeight || ""}
+                        onChange={(event) =>
+                          handleResizeHeight(
+                            Number(event.target.value)
+                          )
+                        }
+                      />
+                    </label>
+
+                    <div className="resize-presets">
+                      <span>Presets</span>
+
+                      <button
+                        onClick={() => {
+                          setResizeWidth(640);
+                          setResizeHeight(480);
+                        }}
+                      >
+                        640 × 480
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setResizeWidth(1280);
+                          setResizeHeight(720);
+                        }}
+                      >
+                        1280 × 720
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setResizeWidth(1920);
+                          setResizeHeight(1080);
+                        }}
+                      >
+                        1920 × 1080
+                      </button>
+                    </div>
+
+                    <div className="resize-buttons">
+                      <button
+                        className="resize-reset"
+                        onClick={resetResizeFields}
+                      >
+                        Reset
+                      </button>
+
+                      <button
+                        className="resize-apply"
+                        onClick={applyResize}
+                      >
+                        Apply Resize
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Layers panel */}
+          {activePanel === "layers" && (
+            <div className="layers-panel">
+              <div className="layers-heading">
+                <h4>Layers ({layers.length})</h4>
+
+                <button
+                  className="layer-delete-button"
+                  onClick={deleteSelectedLayer}
+                  disabled={!selectedLayerId}
+                  title="Delete selected layer"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+
+              <div className="layer-add-buttons">
+                <button onClick={addTextLayer}>
+                  <Type size={14} />
+                  Text
+                </button>
+
+                <button
+                  onClick={() => addShapeLayer("rectangle")}
+                >
+                  <Square size={14} />
+                  Rectangle
+                </button>
+
+                <button
+                  onClick={() => addShapeLayer("circle")}
+                >
+                  <Circle size={14} />
+                  Circle
+                </button>
+              </div>
+
+              <button
+                className="layer-add-image"
+                onClick={() =>
+                  layerImageInputRef.current?.click()
+                }
+              >
+                <ImagePlus size={15} />
+                Add image layer
+              </button>
+
+              {layers.length === 0 ? (
+                <p className="layers-empty">
+                  No layers yet. Add text, shapes, or another image.
+                </p>
+              ) : (
+                <div className="layer-list">
+                  {[...layers].reverse().map((layer) => (
+                    <div
+                      key={layer.id}
+                      className={
+                        selectedLayerId === layer.id
+                          ? "layer-item selected"
+                          : "layer-item"
+                      }
+                      onClick={() =>
+                        setSelectedLayerId(layer.id)
+                      }
+                    >
+                      <span className="layer-type-icon">
+                        {layer.type === "text" ? (
+                          <Type size={15} />
+                        ) : layer.type === "rectangle" ? (
+                          <Square size={15} />
+                        ) : layer.type === "circle" ? (
+                          <Circle size={15} />
+                        ) : (
+                          <ImageIcon size={15} />
+                        )}
+                      </span>
+
+                      <span className="layer-name">
+                        {layer.name}
+                        {layer.locked && (
+                          <Lock
+                            size={11}
+                            className="layer-lock-indicator"
+                          />
+                        )}
+                      </span>
+
+                      <button
+                        title={
+                          layer.visible
+                            ? "Hide layer"
+                            : "Show layer"
+                        }
+                        onClick={(event) => {
+                          event.stopPropagation();
+
+                          updateLayer(layer.id, {
+                            visible: !layer.visible,
+                          });
+                        }}
+                      >
+                        {layer.visible ? (
+                          <Eye size={14} />
+                        ) : (
+                          <EyeOff size={14} />
+                        )}
+                      </button>
+
+                      <button
+                        title={
+                          layer.locked
+                            ? "Unlock layer"
+                            : "Lock layer"
+                        }
+                        onClick={(event) => {
+                          event.stopPropagation();
+
+                          updateLayer(layer.id, {
+                            locked: !layer.locked,
+                          });
+                        }}
+                      >
+                        {layer.locked ? (
+                          <Lock size={14} />
+                        ) : (
+                          <Unlock size={14} />
+                        )}
+                      </button>
+
+                      <button
+                        title="Move layer up"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          moveLayerOrder(layer.id, 1);
+                        }}
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+
+                      <button
+                        title="Move layer down"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          moveLayerOrder(layer.id, -1);
+                        }}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
 
-              {/* Image Adjustments */}
-              <div className="adjustment-section">
-                <div className="adjustment-heading">
-                  <h4>Image Adjustments</h4>
+              {/* Selected layer properties */}
+              {selectedLayer && (
+                <div className="layer-properties">
+                  <h4>Selected Layer</h4>
+
+                  <p className="selected-layer-name">
+                    {selectedLayer.name}
+                  </p>
+
+                  <label>
+                    Opacity:{" "}
+                    {Math.round(selectedLayer.opacity * 100)}%
+
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={selectedLayer.opacity * 100}
+                      onChange={(event) =>
+                        updateLayer(selectedLayer.id, {
+                          opacity:
+                            Number(event.target.value) / 100,
+                        })
+                      }
+                    />
+                  </label>
+
+                  {selectedLayer.type === "text" && (
+                    <>
+                      <label>
+                        Text
+
+                        <input
+                          type="text"
+                          value={selectedLayer.text ?? ""}
+                          onChange={(event) =>
+                            updateLayer(selectedLayer.id, {
+                              text: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        Font size
+
+                        <input
+                          type="number"
+                          min="8"
+                          max="200"
+                          value={selectedLayer.fontSize ?? 32}
+                          onChange={(event) =>
+                            updateLayer(selectedLayer.id, {
+                              fontSize: Math.max(
+                                8,
+                                Math.min(
+                                  200,
+                                  Number(event.target.value) || 8
+                                )
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                    </>
+                  )}
+
+                  <label>
+                    Color
+
+                    <input
+                      type="color"
+                      value={selectedLayer.fill}
+                      onChange={(event) =>
+                        updateLayer(selectedLayer.id, {
+                          fill: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
 
                   <button
-                    className="adjustment-reset"
-                    onClick={resetAdjustments}
+                    className="layer-remove-button"
+                    onClick={deleteSelectedLayer}
                   >
-                    Reset
+                    <Trash2 size={14} />
+                    Delete Layer
                   </button>
                 </div>
-
-                {/* Presets */}
-                <div className="preset-section">
-                  <span>Presets</span>
-
-                  <div className="preset-grid">
-                    {(
-                      [
-                        "original",
-                        "vivid",
-                        "warm",
-                        "cool",
-                        "grayscale",
-                        "vintage",
-                      ] as const
-                    ).map((preset) => (
-                      <button
-                        key={preset}
-                        className={
-                          activePreset === preset
-                            ? "preset-button selected"
-                            : "preset-button"
-                        }
-                        onClick={() => applyPreset(preset)}
-                      >
-                        {preset.charAt(0).toUpperCase() +
-                          preset.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Brightness */}
-                <div className="adjustment-control">
-                  <div className="adjustment-label">
-                    <label htmlFor="brightness">
-                      Brightness
-                    </label>
-                    <strong>{brightness}%</strong>
-                  </div>
-
-                  <input
-                    id="brightness"
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={brightness}
-                    onChange={(event) => {
-                      setBrightness(
-                        Number(event.target.value)
-                      );
-                      setActivePreset("custom");
-                    }}
-                  />
-                </div>
-
-                {/* Contrast */}
-                <div className="adjustment-control">
-                  <div className="adjustment-label">
-                    <label htmlFor="contrast">
-                      Contrast
-                    </label>
-                    <strong>{contrast}%</strong>
-                  </div>
-
-                  <input
-                    id="contrast"
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={contrast}
-                    onChange={(event) => {
-                      setContrast(
-                        Number(event.target.value)
-                      );
-                      setActivePreset("custom");
-                    }}
-                  />
-                </div>
-
-                {/* Saturation */}
-                <div className="adjustment-control">
-                  <div className="adjustment-label">
-                    <label htmlFor="saturation">
-                      Saturation
-                    </label>
-                    <strong>{saturation}%</strong>
-                  </div>
-
-                  <input
-                    id="saturation"
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={saturation}
-                    onChange={(event) => {
-                      setSaturation(
-                        Number(event.target.value)
-                      );
-                      setActivePreset("custom");
-                    }}
-                  />
-                </div>
-
-                {/* Blur */}
-                <div className="adjustment-control">
-                  <div className="adjustment-label">
-                    <label htmlFor="blur">Blur</label>
-                    <strong>{blur}px</strong>
-                  </div>
-
-                  <input
-                    id="blur"
-                    type="range"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    value={blur}
-                    onChange={(event) => {
-                      setBlur(Number(event.target.value));
-                      setActivePreset("custom");
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Resize panel */}
-              <div className="resize-section">
-                <div className="resize-heading">
-                  <h4>Resize Image</h4>
-
-                  <button
-                    className="resize-lock-button"
-                    title={
-                      lockAspectRatio
-                        ? "Unlock aspect ratio"
-                        : "Lock aspect ratio"
-                    }
-                    onClick={() =>
-                      setLockAspectRatio((previous) => !previous)
-                    }
-                  >
-                    {lockAspectRatio ? (
-                      <Lock size={15} />
-                    ) : (
-                      <Unlock size={15} />
-                    )}
-
-                    {lockAspectRatio ? "Locked" : "Unlocked"}
-                  </button>
-                </div>
-
-                <label className="resize-label">
-                  Width (px)
-                  <input
-                    type="number"
-                    min="1"
-                    max="12000"
-                    value={resizeWidth || ""}
-                    onChange={(event) =>
-                      handleResizeWidth(
-                        Number(event.target.value)
-                      )
-                    }
-                  />
-                </label>
-
-                <label className="resize-label">
-                  Height (px)
-                  <input
-                    type="number"
-                    min="1"
-                    max="12000"
-                    value={resizeHeight || ""}
-                    onChange={(event) =>
-                      handleResizeHeight(
-                        Number(event.target.value)
-                      )
-                    }
-                  />
-                </label>
-
-                <div className="resize-presets">
-                  <span>Presets</span>
-
-                  <button
-                    onClick={() => {
-                      setResizeWidth(640);
-                      setResizeHeight(480);
-                    }}
-                  >
-                    640 × 480
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setResizeWidth(1280);
-                      setResizeHeight(720);
-                    }}
-                  >
-                    1280 × 720
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setResizeWidth(1920);
-                      setResizeHeight(1080);
-                    }}
-                  >
-                    1920 × 1080
-                  </button>
-                </div>
-
-                <div className="resize-buttons">
-                  <button
-                    className="resize-reset"
-                    onClick={resetResizeFields}
-                  >
-                    Reset
-                  </button>
-
-                  <button
-                    className="resize-apply"
-                    onClick={applyResize}
-                  >
-                    Apply Resize
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </aside>
