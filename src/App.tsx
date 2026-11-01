@@ -1,73 +1,25 @@
-
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent } from "react";
 import {
-  ImagePlus,
-  Upload,
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  RotateCcw,
-  RotateCw,
-  FlipHorizontal,
-  FlipVertical,
-  MousePointer2,
-  Crop,
-  SlidersHorizontal,
-  Layers,
-  Download,
-  Undo2,
-  Redo2,
-  Settings,
-  Image as ImageIcon,
-  Check,
-  X,
-  Lock,
-  Unlock,
-  Type,
-  Square,
-  Circle,
-  Trash2,
-  Eye,
-  EyeOff,
-  ChevronUp,
-  ChevronDown,
+  ImagePlus, Upload, ZoomIn, ZoomOut, Maximize, RotateCcw,
+  RotateCw, FlipHorizontal, FlipVertical, MousePointer2, Crop,
+  SlidersHorizontal, Layers, Download, Undo2, Redo2, Settings,
+  Image as ImageIcon, Check, X, Lock, Unlock, Type, Square,
+  Circle, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, History,
 } from "lucide-react";
 import "./App.css";
 
-type Point = {
-  x: number;
-  y: number;
-};
-
-type CropRegion = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-type Selection = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
+type Point = { x: number; y: number };
+type CropRegion = { x: number; y: number; width: number; height: number };
+type Selection = { x: number; y: number; width: number; height: number };
 
 type TransformAction =
-  | "rotate-left"
-  | "rotate-right"
-  | "flip-horizontal"
-  | "flip-vertical";
+  | "rotate-left" | "rotate-right"
+  | "flip-horizontal" | "flip-vertical";
 
 type PresetName =
-  | "original"
-  | "vivid"
-  | "warm"
-  | "cool"
-  | "grayscale"
-  | "vintage"
-  | "custom";
+  | "original" | "vivid" | "warm" | "cool"
+  | "grayscale" | "vintage" | "custom";
 
 type LayerType = "text" | "rectangle" | "circle" | "image";
 
@@ -87,44 +39,37 @@ type EditorLayer = {
   fill: string;
   image?: HTMLImageElement;
 };
+type LayerResizeAction = {
+  id: string;
+  handle: "nw" | "ne" | "sw" | "se";
+  startX: number;
+  startY: number;
+  originalX: number;
+  originalY: number;
+  originalWidth: number;
+  originalHeight: number;
+};
+
+type HistorySnapshot = {
+  name: string;
+  image: HTMLImageElement | null;
+  cropRegion: CropRegion | null;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  blur: number;
+  activePreset: PresetName;
+  layers: EditorLayer[];
+  selectedLayerId: string | null;
+};
 
 const presets = {
-  original: {
-    brightness: 100,
-    contrast: 100,
-    saturation: 100,
-    blur: 0,
-  },
-  vivid: {
-    brightness: 110,
-    contrast: 120,
-    saturation: 150,
-    blur: 0,
-  },
-  warm: {
-    brightness: 105,
-    contrast: 105,
-    saturation: 115,
-    blur: 0,
-  },
-  cool: {
-    brightness: 105,
-    contrast: 110,
-    saturation: 90,
-    blur: 0,
-  },
-  grayscale: {
-    brightness: 100,
-    contrast: 110,
-    saturation: 0,
-    blur: 0,
-  },
-  vintage: {
-    brightness: 105,
-    contrast: 90,
-    saturation: 75,
-    blur: 0,
-  },
+  original: { brightness: 100, contrast: 100, saturation: 100, blur: 0 },
+  vivid: { brightness: 110, contrast: 120, saturation: 150, blur: 0 },
+  warm: { brightness: 105, contrast: 105, saturation: 115, blur: 0 },
+  cool: { brightness: 105, contrast: 110, saturation: 90, blur: 0 },
+  grayscale: { brightness: 100, contrast: 110, saturation: 0, blur: 0 },
+  vintage: { brightness: 105, contrast: 90, saturation: 75, blur: 0 },
 };
 
 function App() {
@@ -141,73 +86,155 @@ function App() {
     layerX: number;
     layerY: number;
   } | null>(null);
-
+  
+  const layerResizeRef = useRef<LayerResizeAction | null>(null);
   const [imageName, setImageName] = useState("");
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
-
   const [isDragging, setIsDragging] = useState(false);
-  const [lastPosition, setLastPosition] = useState<Point>({
-    x: 0,
-    y: 0,
-  });
+  const [isTransformingLayer, setIsTransformingLayer] = useState(false);
+  const [lastPosition, setLastPosition] = useState<Point>({ x: 0, y: 0 });
 
-  // Crop states
   const [cropMode, setCropMode] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [cropStart, setCropStart] = useState<Point | null>(null);
-  const [cropSelection, setCropSelection] =
-    useState<Selection | null>(null);
-  const [cropRegion, setCropRegion] =
-    useState<CropRegion | null>(null);
-
+  const [cropSelection, setCropSelection] = useState<Selection | null>(null);
+  const [cropRegion, setCropRegion] = useState<CropRegion | null>(null);
   const [imageRevision, setImageRevision] = useState(0);
 
-  // Resize states
   const [resizeWidth, setResizeWidth] = useState(0);
   const [resizeHeight, setResizeHeight] = useState(0);
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
 
-  // Image adjustment states
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
   const [saturation, setSaturation] = useState(100);
   const [blur, setBlur] = useState(0);
-  const [activePreset, setActivePreset] =
-    useState<PresetName>("original");
+  const [activePreset, setActivePreset] = useState<PresetName>("original");
 
-  // Layer management
   const [layers, setLayers] = useState<EditorLayer[]>([]);
-  const [selectedLayerId, setSelectedLayerId] =
-    useState<string | null>(null);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [activePanel, setActivePanel] =
-    useState<"properties" | "layers">("properties");
+    useState<"properties" | "layers" | "history">("properties");
+  const [layerDragStart, setLayerDragStart] = useState<Point | null>(null);
 
-  const [layerDragStart, setLayerDragStart] =
-    useState<Point | null>(null);
+  const [history, setHistory] = useState<HistorySnapshot[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isRestoringHistory = useRef(false);
+  const historyReady = useRef(false);
 
-  const selectedLayer = layers.find(
-    (layer) => layer.id === selectedLayerId
-  );
+  const selectedLayer = layers.find((layer) => layer.id === selectedLayerId);
 
-  // Get current image dimensions.
+ useEffect(() => {
+    if (isTransformingLayer) {
+      return;
+    }
+    if (isRestoringHistory.current) {
+  isRestoringHistory.current = false;
+  return;
+}
+
+const snapshot: HistorySnapshot = {
+      name: imageName,
+      image: imageRef.current,
+      cropRegion: cropRegion ? { ...cropRegion } : null,
+      brightness,
+      contrast,
+      saturation,
+      blur,
+      activePreset,
+      layers: layers.map((layer) => ({ ...layer })),
+      selectedLayerId,
+    };
+
+    if (!historyReady.current) {
+      historyReady.current = true;
+      setHistory([snapshot]);
+      setHistoryIndex(0);
+      return;
+    }
+
+    setHistory((previous) => {
+      const next = previous.slice(0, historyIndex + 1);
+      next.push(snapshot);
+      const trimmed = next.length > 100 ? next.slice(-100) : next;
+      setHistoryIndex(trimmed.length - 1);
+      return trimmed;
+    });
+   }, [
+    imageName, imageRevision, cropRegion, brightness, contrast,
+    saturation, blur, activePreset, layers, selectedLayerId,
+    isTransformingLayer,
+  ]);
+
+  const restoreHistory = (index: number) => {
+    const snapshot = history[index];
+    if (!snapshot) return;
+
+    isRestoringHistory.current = true;
+    imageRef.current = snapshot.image;
+    setImageName(snapshot.name);
+    setCropRegion(snapshot.cropRegion ? { ...snapshot.cropRegion } : null);
+    setBrightness(snapshot.brightness);
+    setContrast(snapshot.contrast);
+    setSaturation(snapshot.saturation);
+    setBlur(snapshot.blur);
+    setActivePreset(snapshot.activePreset);
+    setLayers(snapshot.layers.map((layer) => ({ ...layer })));
+    setSelectedLayerId(snapshot.selectedLayerId);
+    setCropMode(false);
+    setCropSelection(null);
+    setCropStart(null);
+    setIsSelecting(false);
+    setImageRevision((value) => value + 1);
+    setHistoryIndex(index);
+  };
+
+  const undo = () => {
+    if (historyIndex > 0) restoreHistory(historyIndex - 1);
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) restoreHistory(historyIndex + 1);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping = !!target && (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+
+      if (isTyping) return;
+
+      const modifier = event.ctrlKey || event.metaKey;
+      if (!modifier) return;
+
+      if (event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+      } else if (event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [historyIndex, history.length]);
+
   const getImageDimensions = () => {
     const image = imageRef.current;
-
     if (!image) return null;
 
     return cropRegion
-      ? {
-          width: cropRegion.width,
-          height: cropRegion.height,
-        }
-      : {
-          width: image.width,
-          height: image.height,
-        };
+      ? { width: cropRegion.width, height: cropRegion.height }
+      : { width: image.width, height: image.height };
   };
 
-  // Reset image adjustments.
   const resetAdjustments = () => {
     setBrightness(100);
     setContrast(100);
@@ -216,10 +243,8 @@ function App() {
     setActivePreset("original");
   };
 
-  // Apply a preset.
   const applyPreset = (name: Exclude<PresetName, "custom">) => {
     const preset = presets[name];
-
     setBrightness(preset.brightness);
     setContrast(preset.contrast);
     setSaturation(preset.saturation);
@@ -227,37 +252,28 @@ function App() {
     setActivePreset(name);
   };
 
-  // Update resize dimensions when image changes.
   useEffect(() => {
     const dimensions = getImageDimensions();
-
     if (dimensions) {
       setResizeWidth(Math.round(dimensions.width));
       setResizeHeight(Math.round(dimensions.height));
     }
   }, [imageRevision, cropRegion]);
 
-  // Convert mouse position to canvas coordinates.
-  const getCanvasPoint = (
-    event: MouseEvent<HTMLCanvasElement>
-  ): Point => {
+  const getCanvasPoint = (event: MouseEvent<HTMLCanvasElement>): Point => {
     const rect = event.currentTarget.getBoundingClientRect();
-
     return {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
     };
   };
 
-  // Draw background image, layers, and crop selection.
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
-
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
-
     if (!ctx) return;
 
     const width = canvas.clientWidth;
@@ -274,45 +290,26 @@ function App() {
       ctx.fillStyle = "#999";
       ctx.font = "15px Arial";
       ctx.textAlign = "center";
-      ctx.fillText(
-        "Upload an image to start editing",
-        width / 2,
-        height / 2
-      );
+      ctx.fillText("Upload an image to start editing", width / 2, height / 2);
       return;
     }
 
     const source = cropRegion ?? {
-      x: 0,
-      y: 0,
-      width: image.width,
-      height: image.height,
+      x: 0, y: 0, width: image.width, height: image.height,
     };
 
     const drawWidth = source.width * zoom;
     const drawHeight = source.height * zoom;
-
     const filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
 
-    // Draw adjusted background image.
     ctx.save();
     ctx.filter = filter;
-
     ctx.drawImage(
-      image,
-      source.x,
-      source.y,
-      source.width,
-      source.height,
-      offset.x,
-      offset.y,
-      drawWidth,
-      drawHeight
+      image, source.x, source.y, source.width, source.height,
+      offset.x, offset.y, drawWidth, drawHeight
     );
-
     ctx.restore();
 
-    // Draw all visible layers.
     layers.forEach((layer) => {
       if (!layer.visible) return;
 
@@ -328,130 +325,93 @@ function App() {
         ctx.fillStyle = layer.fill;
         ctx.font = `${(layer.fontSize ?? 32) * zoom}px Arial`;
         ctx.textBaseline = "top";
-
-        ctx.fillText(
-          layer.text ?? "",
-          layerX,
-          layerY,
-          layerWidth
-        );
+        ctx.fillText(layer.text ?? "", layerX, layerY, layerWidth);
       }
 
       if (layer.type === "rectangle") {
         ctx.fillStyle = layer.fill;
-        ctx.fillRect(
-          layerX,
-          layerY,
-          layerWidth,
-          layerHeight
-        );
+        ctx.fillRect(layerX, layerY, layerWidth, layerHeight);
       }
 
       if (layer.type === "circle") {
         ctx.fillStyle = layer.fill;
         ctx.beginPath();
-
         ctx.ellipse(
           layerX + layerWidth / 2,
           layerY + layerHeight / 2,
           layerWidth / 2,
           layerHeight / 2,
-          0,
-          0,
-          Math.PI * 2
+          0, 0, Math.PI * 2
         );
-
         ctx.fill();
       }
 
       if (layer.type === "image" && layer.image) {
-        ctx.drawImage(
-          layer.image,
-          layerX,
-          layerY,
-          layerWidth,
-          layerHeight
-        );
+        ctx.drawImage(layer.image, layerX, layerY, layerWidth, layerHeight);
       }
 
       ctx.restore();
     });
 
-    // Draw selected layer outline.
     const currentSelectedLayer = layers.find(
       (layer) => layer.id === selectedLayerId
     );
 
-    if (
-      currentSelectedLayer &&
-      currentSelectedLayer.visible
-    ) {
-      ctx.save();
+  if (currentSelectedLayer?.visible) {
+  const x = offset.x + currentSelectedLayer.x * zoom;
+  const y = offset.y + currentSelectedLayer.y * zoom;
+  const width = currentSelectedLayer.width * zoom;
+  const height = currentSelectedLayer.height * zoom;
 
-      ctx.strokeStyle = "#9b85ff";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 4]);
+  ctx.save();
 
-      ctx.strokeRect(
-        offset.x + currentSelectedLayer.x * zoom,
-        offset.y + currentSelectedLayer.y * zoom,
-        currentSelectedLayer.width * zoom,
-        currentSelectedLayer.height * zoom
-      );
+  // Selection border
+  ctx.strokeStyle = "#9b85ff";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  ctx.strokeRect(x, y, width, height);
+  ctx.setLineDash([]);
 
-      ctx.setLineDash([]);
+  // Four resize handles
+  const handles = [
+    [x, y],
+    [x + width, y],
+    [x, y + height],
+    [x + width, y + height],
+  ];
 
-      ctx.restore();
-    }
+  handles.forEach(([handleX, handleY]) => {
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#9b85ff";
+    ctx.lineWidth = 2;
 
-    // Crop selection overlay.
+    ctx.beginPath();
+    ctx.rect(handleX - 5, handleY - 5, 10, 10);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  ctx.restore();
+}
+
     if (cropMode && cropSelection) {
-      const {
-        x,
-        y,
-        width: selectionWidth,
-        height: selectionHeight,
-      } = cropSelection;
+      const { x, y, width: selectionWidth, height: selectionHeight } =
+        cropSelection;
 
       ctx.save();
-
       ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
       ctx.fillRect(0, 0, width, height);
-
-      ctx.clearRect(
-        x,
-        y,
-        selectionWidth,
-        selectionHeight
-      );
-
+      ctx.clearRect(x, y, selectionWidth, selectionHeight);
       ctx.filter = filter;
-
       ctx.drawImage(
-        image,
-        source.x,
-        source.y,
-        source.width,
-        source.height,
-        offset.x,
-        offset.y,
-        drawWidth,
-        drawHeight
+        image, source.x, source.y, source.width, source.height,
+        offset.x, offset.y, drawWidth, drawHeight
       );
-
       ctx.filter = "none";
-
       ctx.strokeStyle = "#9b85ff";
       ctx.lineWidth = 2;
       ctx.setLineDash([7, 4]);
-
-      ctx.strokeRect(
-        x,
-        y,
-        selectionWidth,
-        selectionHeight
-      );
-
+      ctx.strokeRect(x, y, selectionWidth, selectionHeight);
       ctx.setLineDash([]);
       ctx.fillStyle = "#9b85ff";
 
@@ -462,84 +422,47 @@ function App() {
         [x + selectionWidth, y + selectionHeight],
       ];
 
-      corners.forEach(([cx, cy]) => {
-        ctx.fillRect(cx - 4, cy - 4, 8, 8);
-      });
-
+      corners.forEach(([cx, cy]) => ctx.fillRect(cx - 4, cy - 4, 8, 8));
       ctx.restore();
     }
   };
 
-  // Redraw canvas whenever display properties change.
   useEffect(() => {
     drawCanvas();
   }, [
-    zoom,
-    offset,
-    imageName,
-    cropRegion,
-    cropMode,
-    cropSelection,
-    imageRevision,
-    brightness,
-    contrast,
-    saturation,
-    blur,
-    layers,
-    selectedLayerId,
+    zoom, offset, imageName, cropRegion, cropMode, cropSelection,
+    imageRevision, brightness, contrast, saturation, blur,
+    layers, selectedLayerId,
   ]);
 
-  // Handle browser resizing.
   useEffect(() => {
     const handleResize = () => drawCanvas();
-
     window.addEventListener("resize", handleResize);
     drawCanvas();
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Fit image inside canvas.
   const fitToScreen = () => {
     const canvas = canvasRef.current;
     const dimensions = getImageDimensions();
-
     if (!canvas || !dimensions) return;
 
     const scaleX = canvas.clientWidth / dimensions.width;
     const scaleY = canvas.clientHeight / dimensions.height;
-
     const newZoom = Math.min(scaleX, scaleY, 1);
 
     setZoom(newZoom);
-
     setOffset({
-      x:
-        (canvas.clientWidth -
-          dimensions.width * newZoom) /
-        2,
-      y:
-        (canvas.clientHeight -
-          dimensions.height * newZoom) /
-        2,
+      x: (canvas.clientWidth - dimensions.width * newZoom) / 2,
+      y: (canvas.clientHeight - dimensions.height * newZoom) / 2,
     });
   };
 
-  // Upload background image.
-  const uploadImage = (
-    event: ChangeEvent<HTMLInputElement>
-  ) => {
+  const uploadImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-
     if (!file) return;
 
-    if (
-      !["image/png", "image/jpeg", "image/webp"].includes(
-        file.type
-      )
-    ) {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
       alert("Please upload a PNG, JPG, or WebP image.");
       event.target.value = "";
       return;
@@ -551,27 +474,21 @@ function App() {
     image.onload = () => {
       imageRef.current = image;
       originalImageRef.current = image;
-
       setImageName(file.name);
       setZoom(1);
       setOffset({ x: 0, y: 0 });
-
       setCropRegion(null);
       setCropSelection(null);
       setCropMode(false);
       setIsSelecting(false);
       setCropStart(null);
-
       setLayers([]);
       setSelectedLayerId(null);
-
       resetAdjustments();
-
       setImageRevision((previous) => previous + 1);
 
       requestAnimationFrame(() => {
         const canvas = canvasRef.current;
-
         if (!canvas) return;
 
         const scale = Math.min(
@@ -581,14 +498,9 @@ function App() {
         );
 
         setZoom(scale);
-
         setOffset({
-          x:
-            (canvas.clientWidth - image.width * scale) /
-            2,
-          y:
-            (canvas.clientHeight - image.height * scale) /
-            2,
+          x: (canvas.clientWidth - image.width * scale) / 2,
+          y: (canvas.clientHeight - image.height * scale) / 2,
         });
       });
 
@@ -604,19 +516,11 @@ function App() {
     event.target.value = "";
   };
 
-  // Upload an additional image as a layer.
-  const uploadLayerImage = (
-    event: ChangeEvent<HTMLInputElement>
-  ) => {
+  const uploadLayerImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-
     if (!file) return;
 
-    if (
-      !["image/png", "image/jpeg", "image/webp"].includes(
-        file.type
-      )
-    ) {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
       alert("Please upload a PNG, JPG, or WebP image.");
       event.target.value = "";
       return;
@@ -628,34 +532,23 @@ function App() {
     image.onload = () => {
       const maxDimension = 400;
       const scale = Math.min(
-        1,
-        maxDimension / Math.max(image.width, image.height)
+        1, maxDimension / Math.max(image.width, image.height)
       );
 
       const width = Math.round(image.width * scale);
       const height = Math.round(image.height * scale);
-
       const id = crypto.randomUUID();
 
       const newLayer: EditorLayer = {
-        id,
-        name: file.name,
-        type: "image",
-        x: 40,
-        y: 40,
-        width,
-        height,
-        visible: true,
-        locked: false,
-        opacity: 1,
-        fill: "#ffffff",
-        image,
+        id, name: file.name, type: "image",
+        x: 40, y: 40, width, height,
+        visible: true, locked: false, opacity: 1,
+        fill: "#ffffff", image,
       };
 
       setLayers((previous) => [...previous, newLayer]);
       setSelectedLayerId(id);
       setActivePanel("layers");
-
       URL.revokeObjectURL(url);
     };
 
@@ -668,17 +561,10 @@ function App() {
     event.target.value = "";
   };
 
-  // Zoom.
   const handleZoom = (direction: number) => {
-    const nextZoom = Math.min(
-      5,
-      Math.max(0.1, zoom + direction)
-    );
-
-    setZoom(nextZoom);
+    setZoom(Math.min(5, Math.max(0.1, zoom + direction)));
   };
 
-  // Create text layer.
   const addTextLayer = () => {
     if (!imageRef.current) {
       alert("Upload a background image first.");
@@ -686,21 +572,11 @@ function App() {
     }
 
     const id = crypto.randomUUID();
-
     const layer: EditorLayer = {
-      id,
-      name: "Text Layer",
-      type: "text",
-      x: 40,
-      y: 40,
-      width: 240,
-      height: 60,
-      visible: true,
-      locked: false,
-      opacity: 1,
-      text: "Your text here",
-      fontSize: 32,
-      fill: "#ffffff",
+      id, name: "Text Layer", type: "text",
+      x: 40, y: 40, width: 240, height: 60,
+      visible: true, locked: false, opacity: 1,
+      text: "Your text here", fontSize: 32, fill: "#ffffff",
     };
 
     setLayers((previous) => [...previous, layer]);
@@ -708,28 +584,19 @@ function App() {
     setActivePanel("layers");
   };
 
-  // Create shape layer.
-  const addShapeLayer = (
-    type: "rectangle" | "circle"
-  ) => {
+  const addShapeLayer = (type: "rectangle" | "circle") => {
     if (!imageRef.current) {
       alert("Upload a background image first.");
       return;
     }
 
     const id = crypto.randomUUID();
-
     const layer: EditorLayer = {
       id,
       name: type === "rectangle" ? "Rectangle" : "Circle",
       type,
-      x: 60,
-      y: 60,
-      width: 150,
-      height: 100,
-      visible: true,
-      locked: false,
-      opacity: 1,
+      x: 60, y: 60, width: 150, height: 100,
+      visible: true, locked: false, opacity: 1,
       fill: "#8b78ff",
     };
 
@@ -755,36 +622,23 @@ function App() {
     if (!selectedLayerId) return;
 
     setLayers((previous) =>
-      previous.filter(
-        (layer) => layer.id !== selectedLayerId
-      )
+      previous.filter((layer) => layer.id !== selectedLayerId)
     );
 
     setSelectedLayerId(null);
   };
 
   // Change layer stacking order.
-  const moveLayerOrder = (
-    id: string,
-    direction: -1 | 1
-  ) => {
+  const moveLayerOrder = (id: string, direction: -1 | 1) => {
     setLayers((previous) => {
-      const index = previous.findIndex(
-        (layer) => layer.id === id
-      );
-
+      const index = previous.findIndex((layer) => layer.id === id);
       const nextIndex = index + direction;
 
-      if (
-        index < 0 ||
-        nextIndex < 0 ||
-        nextIndex >= previous.length
-      ) {
+      if (index < 0 || nextIndex < 0 || nextIndex >= previous.length) {
         return previous;
       }
 
       const updated = [...previous];
-
       [updated[index], updated[nextIndex]] = [
         updated[nextIndex],
         updated[index],
@@ -803,7 +657,6 @@ function App() {
 
     for (let i = layers.length - 1; i >= 0; i--) {
       const layer = layers[i];
-
       if (!layer.visible) continue;
 
       const inside =
@@ -817,28 +670,79 @@ function App() {
 
     return null;
   };
+  
+  // Detect whether the pointer is near a selected layer corner.
+  const getResizeHandle = (
+    point: Point,
+    layer: EditorLayer
+  ): LayerResizeAction["handle"] | null => {
+    const left = offset.x + layer.x * zoom;
+    const top = offset.y + layer.y * zoom;
+    const right = left + layer.width * zoom;
+    const bottom = top + layer.height * zoom;
+
+    const handles = [
+      { name: "nw" as const, x: left, y: top },
+      { name: "ne" as const, x: right, y: top },
+      { name: "sw" as const, x: left, y: bottom },
+      { name: "se" as const, x: right, y: bottom },
+    ];
+
+    const hitArea = 10;
+
+    for (const handle of handles) {
+      if (
+        Math.abs(point.x - handle.x) <= hitArea &&
+        Math.abs(point.y - handle.y) <= hitArea
+      ) {
+        return handle.name;
+      }
+    }
+
+    return null;
+  };
 
   // Mouse down.
-  const handleMouseDown = (
-    event: MouseEvent<HTMLCanvasElement>
-  ) => {
+  const handleMouseDown = (event: MouseEvent<HTMLCanvasElement>) => {
     const point = getCanvasPoint(event);
 
     if (cropMode) {
       setIsSelecting(true);
       setCropStart(point);
-
       setCropSelection({
         x: point.x,
         y: point.y,
         width: 0,
         height: 0,
       });
-
       return;
     }
 
-    // Select and move a layer if one is under the pointer.
+    // Check whether a selected layer's resize handle was clicked.
+    const activeLayer = layers.find(
+      (layer) => layer.id === selectedLayerId
+    );
+
+    if (activeLayer?.visible && !activeLayer.locked) {
+      const handle = getResizeHandle(point, activeLayer);
+
+      if (handle) {
+        layerResizeRef.current = {
+          id: activeLayer.id,
+          handle,
+          startX: point.x,
+          startY: point.y,
+          originalX: activeLayer.x,
+          originalY: activeLayer.y,
+          originalWidth: activeLayer.width,
+          originalHeight: activeLayer.height,
+        };
+        setIsTransformingLayer(true);
+        return;
+      }
+    }
+
+    // Check whether a layer was clicked.
     const clickedLayer = findLayerAtPoint(point);
 
     if (clickedLayer) {
@@ -852,7 +756,7 @@ function App() {
           layerX: clickedLayer.x,
           layerY: clickedLayer.y,
         };
-
+        setIsTransformingLayer(true);
         setLayerDragStart(point);
         return;
       }
@@ -860,24 +764,23 @@ function App() {
       setSelectedLayerId(null);
     }
 
-    // Otherwise pan the canvas.
+    // Start moving the canvas.
     setIsDragging(true);
-
     setLastPosition({
       x: event.clientX,
       y: event.clientY,
     });
   };
 
+
+
   // Mouse move.
-  const handleMouseMove = (
-    event: MouseEvent<HTMLCanvasElement>
-  ) => {
+  const handleMouseMove = (event: MouseEvent<HTMLCanvasElement>) => {
     const point = getCanvasPoint(event);
 
+    // Handle crop selection.
     if (cropMode && isSelecting && cropStart) {
       const image = imageRef.current;
-
       if (!image) return;
 
       const source = cropRegion ?? {
@@ -892,25 +795,10 @@ function App() {
       const imageRight = imageLeft + source.width * zoom;
       const imageBottom = imageTop + source.height * zoom;
 
-      const currentX = Math.min(
-        imageRight,
-        Math.max(imageLeft, point.x)
-      );
-
-      const currentY = Math.min(
-        imageBottom,
-        Math.max(imageTop, point.y)
-      );
-
-      const startX = Math.min(
-        imageRight,
-        Math.max(imageLeft, cropStart.x)
-      );
-
-      const startY = Math.min(
-        imageBottom,
-        Math.max(imageTop, cropStart.y)
-      );
+      const currentX = Math.min(imageRight, Math.max(imageLeft, point.x));
+      const currentY = Math.min(imageBottom, Math.max(imageTop, point.y));
+      const startX = Math.min(imageRight, Math.max(imageLeft, cropStart.x));
+      const startY = Math.min(imageBottom, Math.max(imageTop, cropStart.y));
 
       setCropSelection({
         x: Math.min(startX, currentX),
@@ -922,7 +810,59 @@ function App() {
       return;
     }
 
-    // Move selected layer.
+    // Resize the selected layer.
+    if (layerResizeRef.current) {
+      const resize = layerResizeRef.current;
+
+      const dx = (point.x - resize.startX) / zoom;
+      const dy = (point.y - resize.startY) / zoom;
+
+      const isLeft = resize.handle === "nw" || resize.handle === "sw";
+      const isTop = resize.handle === "nw" || resize.handle === "ne";
+
+      let width = resize.originalWidth + (isLeft ? -dx : dx);
+      let height = resize.originalHeight + (isTop ? -dy : dy);
+
+      // Preserve aspect ratio while Shift is held.
+      if (event.shiftKey) {
+        const ratio = resize.originalWidth / resize.originalHeight;
+
+        const widthChange =
+          Math.abs(width - resize.originalWidth) / resize.originalWidth;
+
+        const heightChange =
+          Math.abs(height - resize.originalHeight) / resize.originalHeight;
+
+        if (widthChange >= heightChange) {
+          height = width / ratio;
+        } else {
+          width = height * ratio;
+        }
+      }
+
+      width = Math.max(10, width);
+      height = Math.max(10, height);
+
+      // Keep the opposite corner fixed.
+      const x = isLeft
+        ? resize.originalX + resize.originalWidth - width
+        : resize.originalX;
+
+      const y = isTop
+        ? resize.originalY + resize.originalHeight - height
+        : resize.originalY;
+
+      updateLayer(resize.id, {
+        x: Math.max(0, x),
+        y: Math.max(0, y),
+        width,
+        height,
+      });
+
+      return;
+    }
+
+    // Move the selected layer.
     if (layerDragRef.current) {
       const drag = layerDragRef.current;
 
@@ -937,6 +877,7 @@ function App() {
       return;
     }
 
+    // Move the canvas.
     if (!isDragging) return;
 
     const dx = event.clientX - lastPosition.x;
@@ -953,12 +894,23 @@ function App() {
     });
   };
 
+
   const stopDragging = () => {
-    setIsDragging(false);
-    setIsSelecting(false);
-    layerDragRef.current = null;
-    setLayerDragStart(null);
-  };
+  setIsDragging(false);
+  setIsSelecting(false);
+
+  const wasTransforming =
+    layerDragRef.current !== null ||
+    layerResizeRef.current !== null;
+
+  layerDragRef.current = null;
+  layerResizeRef.current = null;
+  setLayerDragStart(null);
+
+  if (wasTransforming) {
+    setIsTransformingLayer(false);
+  }
+};
 
   // Crop functions.
   const startCrop = () => {
@@ -987,10 +939,7 @@ function App() {
       return;
     }
 
-    if (
-      cropSelection.width < 10 ||
-      cropSelection.height < 10
-    ) {
+    if (cropSelection.width < 10 || cropSelection.height < 10) {
       alert("Please select a larger crop area.");
       return;
     }
@@ -1011,20 +960,16 @@ function App() {
 
     nextCrop.x = Math.max(current.x, nextCrop.x);
     nextCrop.y = Math.max(current.y, nextCrop.y);
-
     nextCrop.width = Math.min(
       nextCrop.width,
       current.x + current.width - nextCrop.x
     );
-
     nextCrop.height = Math.min(
       nextCrop.height,
       current.y + current.height - nextCrop.y
     );
 
-    if (nextCrop.width <= 0 || nextCrop.height <= 0) {
-      return;
-    }
+    if (nextCrop.width <= 0 || nextCrop.height <= 0) return;
 
     setCropRegion(nextCrop);
     setCropMode(false);
@@ -1033,7 +978,6 @@ function App() {
 
     requestAnimationFrame(() => {
       const canvas = canvasRef.current;
-
       if (!canvas) return;
 
       const newZoom = Math.min(
@@ -1043,14 +987,9 @@ function App() {
       );
 
       setZoom(newZoom);
-
       setOffset({
-        x:
-          (canvas.clientWidth - nextCrop.width * newZoom) /
-          2,
-        y:
-          (canvas.clientHeight - nextCrop.height * newZoom) /
-          2,
+        x: (canvas.clientWidth - nextCrop.width * newZoom) / 2,
+        y: (canvas.clientHeight - nextCrop.height * newZoom) / 2,
       });
     });
   };
@@ -1059,9 +998,7 @@ function App() {
     setCropRegion(null);
     cancelCrop();
 
-    requestAnimationFrame(() => {
-      fitToScreen();
-    });
+    requestAnimationFrame(() => fitToScreen());
   };
 
   // Rotate and flip image.
@@ -1086,24 +1023,20 @@ function App() {
     };
 
     const isRotation =
-      action === "rotate-left" ||
-      action === "rotate-right";
+      action === "rotate-left" || action === "rotate-right";
 
     const outputWidth = Math.round(
       isRotation ? source.height : source.width
     );
-
     const outputHeight = Math.round(
       isRotation ? source.width : source.height
     );
 
     const transformCanvas = document.createElement("canvas");
-
     transformCanvas.width = outputWidth;
     transformCanvas.height = outputHeight;
 
     const ctx = transformCanvas.getContext("2d");
-
     if (!ctx) return;
 
     ctx.translate(outputWidth / 2, outputHeight / 2);
@@ -1134,17 +1067,14 @@ function App() {
 
     transformedImage.onload = () => {
       imageRef.current = transformedImage;
-
       setCropRegion(null);
       setCropSelection(null);
       setCropMode(false);
       setIsSelecting(false);
       setCropStart(null);
-
       setImageRevision((previous) => previous + 1);
 
       const canvas = canvasRef.current;
-
       if (!canvas) return;
 
       const scale = Math.min(
@@ -1154,16 +1084,9 @@ function App() {
       );
 
       setZoom(scale);
-
       setOffset({
-        x:
-          (canvas.clientWidth -
-            transformedImage.width * scale) /
-          2,
-        y:
-          (canvas.clientHeight -
-            transformedImage.height * scale) /
-          2,
+        x: (canvas.clientWidth - transformedImage.width * scale) / 2,
+        y: (canvas.clientHeight - transformedImage.height * scale) / 2,
       });
     };
 
@@ -1171,44 +1094,33 @@ function App() {
       alert("Unable to transform this image.");
     };
 
-    transformedImage.src =
-      transformCanvas.toDataURL("image/png");
+    transformedImage.src = transformCanvas.toDataURL("image/png");
   };
 
   // Resize functions.
   const handleResizeWidth = (value: number) => {
     const width = Math.max(1, Math.min(12000, value));
-
     setResizeWidth(width);
 
     if (lockAspectRatio) {
       const dimensions = getImageDimensions();
-
       if (!dimensions) return;
 
       const ratio = dimensions.width / dimensions.height;
-
-      setResizeHeight(
-        Math.max(1, Math.round(width / ratio))
-      );
+      setResizeHeight(Math.max(1, Math.round(width / ratio)));
     }
   };
 
   const handleResizeHeight = (value: number) => {
     const height = Math.max(1, Math.min(12000, value));
-
     setResizeHeight(height);
 
     if (lockAspectRatio) {
       const dimensions = getImageDimensions();
-
       if (!dimensions) return;
 
       const ratio = dimensions.width / dimensions.height;
-
-      setResizeWidth(
-        Math.max(1, Math.round(height * ratio))
-      );
+      setResizeWidth(Math.max(1, Math.round(height * ratio)));
     }
   };
 
@@ -1245,12 +1157,10 @@ function App() {
     };
 
     const resizeCanvas = document.createElement("canvas");
-
     resizeCanvas.width = resizeWidth;
     resizeCanvas.height = resizeHeight;
 
     const ctx = resizeCanvas.getContext("2d");
-
     if (!ctx) return;
 
     ctx.imageSmoothingEnabled = true;
@@ -1272,17 +1182,14 @@ function App() {
 
     resizedImage.onload = () => {
       imageRef.current = resizedImage;
-
       setCropRegion(null);
       setCropSelection(null);
       setCropMode(false);
       setIsSelecting(false);
       setCropStart(null);
-
       setImageRevision((previous) => previous + 1);
 
       const canvas = canvasRef.current;
-
       if (!canvas) return;
 
       const scale = Math.min(
@@ -1292,16 +1199,9 @@ function App() {
       );
 
       setZoom(scale);
-
       setOffset({
-        x:
-          (canvas.clientWidth -
-            resizedImage.width * scale) /
-          2,
-        y:
-          (canvas.clientHeight -
-            resizedImage.height * scale) /
-          2,
+        x: (canvas.clientWidth - resizedImage.width * scale) / 2,
+        y: (canvas.clientHeight - resizedImage.height * scale) / 2,
       });
     };
 
@@ -1312,7 +1212,6 @@ function App() {
     resizedImage.src = resizeCanvas.toDataURL("image/png");
   };
 
-  // Restore original uploaded image.
   const resetResizeFields = () => {
     const originalImage = originalImageRef.current;
 
@@ -1322,24 +1221,19 @@ function App() {
     }
 
     imageRef.current = originalImage;
-
     setCropRegion(null);
     setCropSelection(null);
     setCropStart(null);
     setCropMode(false);
     setIsSelecting(false);
-
     setResizeWidth(originalImage.width);
     setResizeHeight(originalImage.height);
     setLockAspectRatio(true);
-
     resetAdjustments();
-
     setImageRevision((previous) => previous + 1);
 
     requestAnimationFrame(() => {
       const canvas = canvasRef.current;
-
       if (!canvas) return;
 
       const scale = Math.min(
@@ -1349,21 +1243,13 @@ function App() {
       );
 
       setZoom(scale);
-
       setOffset({
-        x:
-          (canvas.clientWidth -
-            originalImage.width * scale) /
-          2,
-        y:
-          (canvas.clientHeight -
-            originalImage.height * scale) /
-          2,
+        x: (canvas.clientWidth - originalImage.width * scale) / 2,
+        y: (canvas.clientHeight - originalImage.height * scale) / 2,
       });
     });
   };
 
-  // Reset canvas view.
   const resetView = () => {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
@@ -1377,18 +1263,27 @@ function App() {
           <div className="brand-icon">
             <ImageIcon size={22} />
           </div>
-
           <span>
             Pixel<span>Studio</span>
           </span>
         </div>
 
         <div className="topbar-actions">
-          <button className="icon-button" title="Undo" disabled>
+          <button
+            className="icon-button"
+            title="Undo (Ctrl+Z)"
+            onClick={undo}
+            disabled={historyIndex <= 0}
+          >
             <Undo2 />
           </button>
 
-          <button className="icon-button" title="Redo" disabled>
+          <button
+            className="icon-button"
+            title="Redo (Ctrl+Y)"
+            onClick={redo}
+            disabled={historyIndex >= history.length - 1}
+          >
             <Redo2 />
           </button>
 
@@ -1425,28 +1320,28 @@ function App() {
             title="Adjustments"
             onClick={() => {
               setActivePanel("properties");
-
               document
                 .querySelector(".adjustment-section")
-                ?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                });
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           >
             <SlidersHorizontal />
           </button>
 
           <button
-            className={
-              activePanel === "layers"
-                ? "tool active"
-                : "tool"
-            }
+            className={activePanel === "layers" ? "tool active" : "tool"}
             title="Layers"
             onClick={() => setActivePanel("layers")}
           >
             <Layers />
+          </button>
+
+          <button
+            className={activePanel === "history" ? "tool active" : "tool"}
+            title="History"
+            onClick={() => setActivePanel("history")}
+          >
+            <History />
           </button>
 
           <div className="toolbar-spacer" />
@@ -1470,9 +1365,7 @@ function App() {
                   <button
                     className="control-button"
                     title="Rotate left"
-                    onClick={() =>
-                      transformImage("rotate-left")
-                    }
+                    onClick={() => transformImage("rotate-left")}
                   >
                     <RotateCcw size={16} />
                   </button>
@@ -1480,9 +1373,7 @@ function App() {
                   <button
                     className="control-button"
                     title="Rotate right"
-                    onClick={() =>
-                      transformImage("rotate-right")
-                    }
+                    onClick={() => transformImage("rotate-right")}
                   >
                     <RotateCw size={16} />
                   </button>
@@ -1490,9 +1381,7 @@ function App() {
                   <button
                     className="control-button"
                     title="Flip horizontally"
-                    onClick={() =>
-                      transformImage("flip-horizontal")
-                    }
+                    onClick={() => transformImage("flip-horizontal")}
                   >
                     <FlipHorizontal size={16} />
                   </button>
@@ -1500,9 +1389,7 @@ function App() {
                   <button
                     className="control-button"
                     title="Flip vertically"
-                    onClick={() =>
-                      transformImage("flip-vertical")
-                    }
+                    onClick={() => transformImage("flip-vertical")}
                   >
                     <FlipVertical size={16} />
                   </button>
@@ -1539,9 +1426,7 @@ function App() {
                   <button
                     className="control-button"
                     title="Add image layer"
-                    onClick={() =>
-                      layerImageInputRef.current?.click()
-                    }
+                    onClick={() => layerImageInputRef.current?.click()}
                   >
                     <ImagePlus size={16} />
                   </button>
@@ -1550,10 +1435,7 @@ function App() {
 
               {cropMode && (
                 <>
-                  <button
-                    className="crop-cancel-button"
-                    onClick={cancelCrop}
-                  >
+                  <button className="crop-cancel-button" onClick={cancelCrop}>
                     <X size={16} />
                     Cancel
                   </button>
@@ -1570,10 +1452,7 @@ function App() {
               )}
 
               {cropRegion && !cropMode && (
-                <button
-                  className="crop-cancel-button"
-                  onClick={resetCrop}
-                >
+                <button className="crop-cancel-button" onClick={resetCrop}>
                   <RotateCcw size={16} />
                   Reset Crop
                 </button>
@@ -1581,9 +1460,7 @@ function App() {
 
               <button
                 className="upload-button"
-                onClick={() =>
-                  fileInputRef.current?.click()
-                }
+                onClick={() => fileInputRef.current?.click()}
               >
                 <Upload size={17} />
                 Upload Image
@@ -1650,18 +1527,12 @@ function App() {
             </div>
 
             <div className="view-controls">
-              <button
-                className="control-button"
-                onClick={fitToScreen}
-              >
+              <button className="control-button" onClick={fitToScreen}>
                 <Maximize size={16} />
                 Fit
               </button>
 
-              <button
-                className="control-button"
-                onClick={resetView}
-              >
+              <button className="control-button" onClick={resetView}>
                 <RotateCcw size={16} />
                 Reset View
               </button>
@@ -1669,7 +1540,7 @@ function App() {
           </div>
         </section>
 
-        {/* Right panel */}
+                {/* Right panel */}
         <aside className="right-panel">
           <div className="panel-heading">
             <div className="panel-tabs">
@@ -1694,6 +1565,17 @@ function App() {
               >
                 Layers ({layers.length})
               </button>
+
+              <button
+                className={
+                  activePanel === "history"
+                    ? "panel-tab active"
+                    : "panel-tab"
+                }
+                onClick={() => setActivePanel("history")}
+              >
+                History
+              </button>
             </div>
           </div>
 
@@ -1704,9 +1586,7 @@ function App() {
                 <div className="empty-panel">
                   <ImagePlus size={30} />
                   <p>No image selected</p>
-                  <span>
-                    Upload an image to see its properties.
-                  </span>
+                  <span>Upload an image to see its properties.</span>
                 </div>
               ) : (
                 <div className="image-properties">
@@ -1715,7 +1595,6 @@ function App() {
                   </div>
 
                   <h4>Image</h4>
-
                   <p className="filename">{imageName}</p>
 
                   <div className="property-row">
@@ -1740,16 +1619,12 @@ function App() {
                       <>
                         <div className="property-row">
                           <span>Image width</span>
-                          <strong>
-                            {Math.round(dimensions.width)} px
-                          </strong>
+                          <strong>{Math.round(dimensions.width)} px</strong>
                         </div>
 
                         <div className="property-row">
                           <span>Image height</span>
-                          <strong>
-                            {Math.round(dimensions.height)} px
-                          </strong>
+                          <strong>{Math.round(dimensions.height)} px</strong>
                         </div>
                       </>
                     ) : null;
@@ -1759,16 +1634,12 @@ function App() {
                     <>
                       <div className="property-row">
                         <span>Crop width</span>
-                        <strong>
-                          {Math.round(cropRegion.width)} px
-                        </strong>
+                        <strong>{Math.round(cropRegion.width)} px</strong>
                       </div>
 
                       <div className="property-row">
                         <span>Crop height</span>
-                        <strong>
-                          {Math.round(cropRegion.height)} px
-                        </strong>
+                        <strong>{Math.round(cropRegion.height)} px</strong>
                       </div>
                     </>
                   )}
@@ -1818,9 +1689,7 @@ function App() {
 
                     <div className="adjustment-control">
                       <div className="adjustment-label">
-                        <label htmlFor="brightness">
-                          Brightness
-                        </label>
+                        <label htmlFor="brightness">Brightness</label>
                         <strong>{brightness}%</strong>
                       </div>
 
@@ -1831,9 +1700,7 @@ function App() {
                         max="200"
                         value={brightness}
                         onChange={(event) => {
-                          setBrightness(
-                            Number(event.target.value)
-                          );
+                          setBrightness(Number(event.target.value));
                           setActivePreset("custom");
                         }}
                       />
@@ -1841,9 +1708,7 @@ function App() {
 
                     <div className="adjustment-control">
                       <div className="adjustment-label">
-                        <label htmlFor="contrast">
-                          Contrast
-                        </label>
+                        <label htmlFor="contrast">Contrast</label>
                         <strong>{contrast}%</strong>
                       </div>
 
@@ -1854,9 +1719,7 @@ function App() {
                         max="200"
                         value={contrast}
                         onChange={(event) => {
-                          setContrast(
-                            Number(event.target.value)
-                          );
+                          setContrast(Number(event.target.value));
                           setActivePreset("custom");
                         }}
                       />
@@ -1864,9 +1727,7 @@ function App() {
 
                     <div className="adjustment-control">
                       <div className="adjustment-label">
-                        <label htmlFor="saturation">
-                          Saturation
-                        </label>
+                        <label htmlFor="saturation">Saturation</label>
                         <strong>{saturation}%</strong>
                       </div>
 
@@ -1877,9 +1738,7 @@ function App() {
                         max="200"
                         value={saturation}
                         onChange={(event) => {
-                          setSaturation(
-                            Number(event.target.value)
-                          );
+                          setSaturation(Number(event.target.value));
                           setActivePreset("custom");
                         }}
                       />
@@ -1919,9 +1778,7 @@ function App() {
                             : "Lock aspect ratio"
                         }
                         onClick={() =>
-                          setLockAspectRatio(
-                            (previous) => !previous
-                          )
+                          setLockAspectRatio((previous) => !previous)
                         }
                       >
                         {lockAspectRatio ? (
@@ -1942,9 +1799,7 @@ function App() {
                         max="12000"
                         value={resizeWidth || ""}
                         onChange={(event) =>
-                          handleResizeWidth(
-                            Number(event.target.value)
-                          )
+                          handleResizeWidth(Number(event.target.value))
                         }
                       />
                     </label>
@@ -1957,9 +1812,7 @@ function App() {
                         max="12000"
                         value={resizeHeight || ""}
                         onChange={(event) =>
-                          handleResizeHeight(
-                            Number(event.target.value)
-                          )
+                          handleResizeHeight(Number(event.target.value))
                         }
                       />
                     </label>
@@ -2038,16 +1891,12 @@ function App() {
                   Text
                 </button>
 
-                <button
-                  onClick={() => addShapeLayer("rectangle")}
-                >
+                <button onClick={() => addShapeLayer("rectangle")}>
                   <Square size={14} />
                   Rectangle
                 </button>
 
-                <button
-                  onClick={() => addShapeLayer("circle")}
-                >
+                <button onClick={() => addShapeLayer("circle")}>
                   <Circle size={14} />
                   Circle
                 </button>
@@ -2055,9 +1904,7 @@ function App() {
 
               <button
                 className="layer-add-image"
-                onClick={() =>
-                  layerImageInputRef.current?.click()
-                }
+                onClick={() => layerImageInputRef.current?.click()}
               >
                 <ImagePlus size={15} />
                 Add image layer
@@ -2077,9 +1924,7 @@ function App() {
                           ? "layer-item selected"
                           : "layer-item"
                       }
-                      onClick={() =>
-                        setSelectedLayerId(layer.id)
-                      }
+                      onClick={() => setSelectedLayerId(layer.id)}
                     >
                       <span className="layer-type-icon">
                         {layer.type === "text" ? (
@@ -2104,14 +1949,9 @@ function App() {
                       </span>
 
                       <button
-                        title={
-                          layer.visible
-                            ? "Hide layer"
-                            : "Show layer"
-                        }
+                        title={layer.visible ? "Hide layer" : "Show layer"}
                         onClick={(event) => {
                           event.stopPropagation();
-
                           updateLayer(layer.id, {
                             visible: !layer.visible,
                           });
@@ -2125,14 +1965,9 @@ function App() {
                       </button>
 
                       <button
-                        title={
-                          layer.locked
-                            ? "Unlock layer"
-                            : "Lock layer"
-                        }
+                        title={layer.locked ? "Unlock layer" : "Lock layer"}
                         onClick={(event) => {
                           event.stopPropagation();
-
                           updateLayer(layer.id, {
                             locked: !layer.locked,
                           });
@@ -2179,8 +2014,7 @@ function App() {
                   </p>
 
                   <label>
-                    Opacity:{" "}
-                    {Math.round(selectedLayer.opacity * 100)}%
+                    Opacity: {Math.round(selectedLayer.opacity * 100)}%
 
                     <input
                       type="range"
@@ -2189,8 +2023,7 @@ function App() {
                       value={selectedLayer.opacity * 100}
                       onChange={(event) =>
                         updateLayer(selectedLayer.id, {
-                          opacity:
-                            Number(event.target.value) / 100,
+                          opacity: Number(event.target.value) / 100,
                         })
                       }
                     />
@@ -2259,6 +2092,71 @@ function App() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* History panel */}
+          {activePanel === "history" && (
+            <div className="history-panel">
+              <div className="layers-heading">
+                <h4>History</h4>
+
+                <div className="history-actions">
+                  <button
+                    className="control-button"
+                    onClick={undo}
+                    disabled={historyIndex <= 0}
+                    title="Undo"
+                  >
+                    <Undo2 size={15} />
+                  </button>
+
+                  <button
+                    className="control-button"
+                    onClick={redo}
+                    disabled={historyIndex >= history.length - 1}
+                    title="Redo"
+                  >
+                    <Redo2 size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {history.length === 0 ? (
+                <p className="layers-empty">
+                  Your editing history will appear here.
+                </p>
+              ) : (
+                <div className="history-list">
+                  {history.map((item, index) => (
+                    <button
+                      key={`${item.name}-${index}`}
+                      className={
+                        index === historyIndex
+                          ? "history-item active"
+                          : "history-item"
+                      }
+                      onClick={() => restoreHistory(index)}
+                    >
+                      <span className="history-number">
+                        {index + 1}
+                      </span>
+
+                      <span className="history-label">
+                        {item.name || "Editor state"}
+                      </span>
+
+                      {index === historyIndex && (
+                        <Check size={14} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <p className="history-hint">
+                Use Ctrl + Z to undo and Ctrl + Y to redo.
+              </p>
             </div>
           )}
         </aside>
