@@ -31,6 +31,7 @@ type EditorLayer = {
   y: number;
   width: number;
   height: number;
+  rotation?: number;
   visible: boolean;
   locked: boolean;
   opacity: number;
@@ -88,6 +89,13 @@ function App() {
   } | null>(null);
   
   const layerResizeRef = useRef<LayerResizeAction | null>(null);
+  const layerRotateRef = useRef<{
+  id: string;
+  centerX: number;
+  centerY: number;
+  startAngle: number;
+  originalRotation: number;
+} | null>(null);
   const [imageName, setImageName] = useState("");
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
@@ -321,6 +329,13 @@ const snapshot: HistorySnapshot = {
       ctx.save();
       ctx.globalAlpha = layer.opacity;
 
+      const centerX = layerX + layerWidth / 2;
+const centerY = layerY + layerHeight / 2;
+
+ctx.translate(centerX, centerY);
+ctx.rotate(((layer.rotation ?? 0) * Math.PI) / 180);
+ctx.translate(-centerX, -centerY);
+
       if (layer.type === "text") {
         ctx.fillStyle = layer.fill;
         ctx.font = `${(layer.fontSize ?? 32) * zoom}px Arial`;
@@ -365,6 +380,16 @@ const snapshot: HistorySnapshot = {
 
   ctx.save();
 
+  // Rotate the selection box around the layer's center.
+const selectionCenterX = x + width / 2;
+const selectionCenterY = y + height / 2;
+
+ctx.translate(selectionCenterX, selectionCenterY);
+ctx.rotate(
+  ((currentSelectedLayer.rotation ?? 0) * Math.PI) / 180
+);
+ctx.translate(-selectionCenterX, -selectionCenterY);
+
   // Selection border
   ctx.strokeStyle = "#9b85ff";
   ctx.lineWidth = 2;
@@ -391,9 +416,29 @@ const snapshot: HistorySnapshot = {
     ctx.stroke();
   });
 
+  // Rotation handle
+  const rotateHandleX = x + width / 2;
+  const rotateHandleY = y - 25;
+
+  // Connector line
+  ctx.beginPath();
+  ctx.moveTo(rotateHandleX, y);
+  ctx.lineTo(rotateHandleX, rotateHandleY);
+  ctx.strokeStyle = "#9b85ff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Rotation circle
+  ctx.beginPath();
+  ctx.arc(rotateHandleX, rotateHandleY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.strokeStyle = "#9b85ff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
   ctx.restore();
 }
-
     if (cropMode && cropSelection) {
       const { x, y, width: selectionWidth, height: selectionHeight } =
         cropSelection;
@@ -678,26 +723,40 @@ const snapshot: HistorySnapshot = {
   ): LayerResizeAction["handle"] | null => {
     const left = offset.x + layer.x * zoom;
     const top = offset.y + layer.y * zoom;
-    const right = left + layer.width * zoom;
-    const bottom = top + layer.height * zoom;
+    const width = layer.width * zoom;
+    const height = layer.height * zoom;
 
-    const handles = [
+    const centerX = left + width / 2;
+   const centerY = top + height / 2;
+
+  const angle = ((layer.rotation ?? 0) * Math.PI) / 180;
+
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+    const corners = [
       { name: "nw" as const, x: left, y: top },
-      { name: "ne" as const, x: right, y: top },
-      { name: "sw" as const, x: left, y: bottom },
-      { name: "se" as const, x: right, y: bottom },
+      { name: "ne" as const, x: left, y: top },
+      { name: "sw" as const, x: left, y: top + height },
+      { name: "se" as const, x: left + width, y: top + height },
     ];
 
     const hitArea = 10;
 
-    for (const handle of handles) {
-      if (
-        Math.abs(point.x - handle.x) <= hitArea &&
-        Math.abs(point.y - handle.y) <= hitArea
-      ) {
-        return handle.name;
-      }
+    for (const corner of corners) {
+    const dx = corner.x - centerX;
+    const dy = corner.y - centerY;
+
+    const rotatedX = centerX + dx * cos - dy * sin;
+    const rotatedY = centerY + dx * sin + dy * cos;
+
+    if (
+      Math.abs(point.x - rotatedX) <= hitArea &&
+      Math.abs(point.y - rotatedY) <= hitArea
+    ) {
+      return corner.name;
     }
+  }
+
 
     return null;
   };
@@ -717,11 +776,52 @@ const snapshot: HistorySnapshot = {
       });
       return;
     }
+    // Check whether the rotated rotation handle was clicked.
+const activeLayer = layers.find(
+  (layer) => layer.id === selectedLayerId
+);
 
+if (activeLayer?.visible && !activeLayer.locked) {
+  const centerX =
+    offset.x + (activeLayer.x + activeLayer.width / 2) * zoom;
+
+  const centerY =
+    offset.y + (activeLayer.y + activeLayer.height / 2) * zoom;
+
+  const topY = offset.y + activeLayer.y * zoom - 25;
+  const angle = ((activeLayer.rotation ?? 0) * Math.PI) / 180;
+
+  const dx = 0;
+  const dy = topY - centerY;
+
+  const rotateHandleX =
+    centerX + dx * Math.cos(angle) - dy * Math.sin(angle);
+
+  const rotateHandleY =
+    centerY + dx * Math.sin(angle) + dy * Math.cos(angle);
+
+  const distance = Math.hypot(
+    point.x - rotateHandleX,
+    point.y - rotateHandleY
+  );
+
+  if (distance <= 12) {
+    layerRotateRef.current = {
+      id: activeLayer.id,
+      centerX,
+      centerY,
+      startAngle: Math.atan2(
+        point.y - centerY,
+        point.x - centerX
+      ),
+      originalRotation: activeLayer.rotation ?? 0,
+    };
+
+    setIsTransformingLayer(true);
+    return;
+  }
+}
     // Check whether a selected layer's resize handle was clicked.
-    const activeLayer = layers.find(
-      (layer) => layer.id === selectedLayerId
-    );
 
     if (activeLayer?.visible && !activeLayer.locked) {
       const handle = getResizeHandle(point, activeLayer);
@@ -810,58 +910,131 @@ const snapshot: HistorySnapshot = {
       return;
     }
 
-    // Resize the selected layer.
-    if (layerResizeRef.current) {
-      const resize = layerResizeRef.current;
+// Rotate the selected layer.
+if (layerRotateRef.current) {
+  const rotationData = layerRotateRef.current;
 
-      const dx = (point.x - resize.startX) / zoom;
-      const dy = (point.y - resize.startY) / zoom;
+  const currentAngle = Math.atan2(
+    point.y - rotationData.centerY,
+    point.x - rotationData.centerX
+  );
 
-      const isLeft = resize.handle === "nw" || resize.handle === "sw";
-      const isTop = resize.handle === "nw" || resize.handle === "ne";
+  const angleDifference =
+    (currentAngle - rotationData.startAngle) * (180 / Math.PI);
 
-      let width = resize.originalWidth + (isLeft ? -dx : dx);
-      let height = resize.originalHeight + (isTop ? -dy : dy);
+  const newRotation =
+    rotationData.originalRotation + angleDifference;
 
-      // Preserve aspect ratio while Shift is held.
-      if (event.shiftKey) {
-        const ratio = resize.originalWidth / resize.originalHeight;
+  setLayers((previousLayers) =>
+    previousLayers.map((layer) =>
+      layer.id === rotationData.id
+        ? { ...layer, rotation: newRotation }
+        : layer
+    )
+  );
 
-        const widthChange =
-          Math.abs(width - resize.originalWidth) / resize.originalWidth;
+  return;
+}
 
-        const heightChange =
-          Math.abs(height - resize.originalHeight) / resize.originalHeight;
+// Resize the selected layer.
+if (layerResizeRef.current) {
+  const resize = layerResizeRef.current;
 
-        if (widthChange >= heightChange) {
-          height = width / ratio;
-        } else {
-          width = height * ratio;
-        }
-      }
+  const resizingLayer = layers.find(
+    (layer) => layer.id === resize.id
+  );
 
-      width = Math.max(10, width);
-      height = Math.max(10, height);
+  const angle =
+    ((resizingLayer?.rotation ?? 0) * Math.PI) / 180;
 
-      // Keep the opposite corner fixed.
-      const x = isLeft
-        ? resize.originalX + resize.originalWidth - width
-        : resize.originalX;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
 
-      const y = isTop
-        ? resize.originalY + resize.originalHeight - height
-        : resize.originalY;
+  // Convert pointer movement into the layer's local coordinates.
+  const screenDX = point.x - resize.startX;
+  const screenDY = point.y - resize.startY;
 
-      updateLayer(resize.id, {
-        x: Math.max(0, x),
-        y: Math.max(0, y),
-        width,
-        height,
-      });
+  const dx = (screenDX * cos + screenDY * sin) / zoom;
+  const dy = (-screenDX * sin + screenDY * cos) / zoom;
 
-      return;
+  const isLeft = resize.handle === "nw" || resize.handle === "sw";
+  const isTop = resize.handle === "nw" || resize.handle === "ne";
+
+  let width = resize.originalWidth + (isLeft ? -dx : dx);
+  let height = resize.originalHeight + (isTop ? -dy : dy);
+
+  // Preserve aspect ratio while Shift is held.
+  if (event.shiftKey) {
+    const ratio = resize.originalWidth / resize.originalHeight;
+
+    const widthChange =
+      Math.abs(width - resize.originalWidth) / resize.originalWidth;
+
+    const heightChange =
+      Math.abs(height - resize.originalHeight) / resize.originalHeight;
+
+    if (widthChange >= heightChange) {
+      height = width / ratio;
+    } else {
+      width = height * ratio;
     }
+  }
 
+  width = Math.max(10, width);
+  height = Math.max(10, height);
+
+  // Find the opposite corner in the original layer.
+  const originalAnchorX = isLeft
+    ? resize.originalX + resize.originalWidth
+    : resize.originalX;
+
+  const originalAnchorY = isTop
+    ? resize.originalY + resize.originalHeight
+    : resize.originalY;
+
+  const originalCenterX =
+    resize.originalX + resize.originalWidth / 2;
+
+  const originalCenterY =
+    resize.originalY + resize.originalHeight / 2;
+
+  // Keep the opposite corner fixed after rotation.
+  const anchorX =
+    originalCenterX +
+    (originalAnchorX - originalCenterX) * cos -
+    (originalAnchorY - originalCenterY) * sin;
+
+  const anchorY =
+    originalCenterY +
+    (originalAnchorX - originalCenterX) * sin +
+    (originalAnchorY - originalCenterY) * cos;
+
+  const newAnchorX = isLeft ? width : 0;
+  const newAnchorY = isTop ? height : 0;
+
+  const newCenterX = width / 2;
+  const newCenterY = height / 2;
+
+  const rotatedAnchorX =
+    (newAnchorX - newCenterX) * cos -
+    (newAnchorY - newCenterY) * sin;
+
+  const rotatedAnchorY =
+    (newAnchorX - newCenterX) * sin +
+    (newAnchorY - newCenterY) * cos;
+
+  const x = anchorX - rotatedAnchorX - newCenterX;
+  const y = anchorY - rotatedAnchorY - newCenterY;
+
+  updateLayer(resize.id, {
+    x: Math.max(0, x),
+    y: Math.max(0, y),
+    width,
+    height,
+  });
+
+  return;
+}
     // Move the selected layer.
     if (layerDragRef.current) {
       const drag = layerDragRef.current;
@@ -901,10 +1074,12 @@ const snapshot: HistorySnapshot = {
 
   const wasTransforming =
     layerDragRef.current !== null ||
-    layerResizeRef.current !== null;
+    layerResizeRef.current !== null ||
+    layerRotateRef.current !== null;
 
   layerDragRef.current = null;
   layerResizeRef.current = null;
+  layerRotateRef.current = null;
   setLayerDragStart(null);
 
   if (wasTransforming) {
@@ -1254,6 +1429,28 @@ const snapshot: HistorySnapshot = {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
   };
+  
+ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
+  const canvas = canvasRef.current;
+
+  if (!canvas) {
+    alert("No canvas available to export.");
+    return;
+  }
+
+  const mimeType = `image/${format}`;
+  const quality = format === "png" ? undefined : 0.92;
+
+  const dataUrl = canvas.toDataURL(mimeType, quality);
+
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = `pixelstudio-export.${
+    format === "jpeg" ? "jpg" : format
+  }`;
+
+  link.click();
+};
 
   return (
     <div className="app">
@@ -1289,12 +1486,30 @@ const snapshot: HistorySnapshot = {
 
           <span className="divider" />
 
-          <button className="export-button" disabled>
-            <Download size={17} />
-            Export
-          </button>
-        </div>
-      </header>
+          <div className="export-options">
+            <button
+    className="export-button"
+    onClick={() => exportImage("png")}
+  >
+    PNG
+  </button>
+
+  <button
+    className="export-button"
+    onClick={() => exportImage("jpeg")}
+  >
+    JPG
+  </button>
+
+  <button
+    className="export-button"
+    onClick={() => exportImage("webp")}
+  >
+    WebP
+  </button>
+</div>
+         </div>
+      </header>  
 
       <main className="editor">
         {/* Left toolbar */}
