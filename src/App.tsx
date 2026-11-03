@@ -3,12 +3,19 @@ import type { ChangeEvent, MouseEvent } from "react";
 import {
   ImagePlus, Upload, ZoomIn, ZoomOut, Maximize, RotateCcw,
   RotateCw, FlipHorizontal, FlipVertical, MousePointer2, Crop,
-  SlidersHorizontal, Layers, Download, Undo2, Redo2, Settings,
+  SlidersHorizontal, Layers, Undo2, Redo2, Settings,
   Image as ImageIcon, Check, X, Lock, Unlock, Type, Square,
   Circle, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, History,
 } from "lucide-react";
 import "./App.css";
+import {
+  saveProject,
+  getAllProjects,
+  getProject,
+  deleteProject,
+} from "./services/projectStorage";
 
+import type { SavedProject } from "./services/projectStorage";
 type Point = { x: number; y: number };
 type CropRegion = { x: number; y: number; width: number; height: number };
 type Selection = { x: number; y: number; width: number; height: number };
@@ -73,6 +80,33 @@ const presets = {
   vintage: { brightness: 105, contrast: 90, saturation: 75, blur: 0 },
 };
 
+const imageToDataURL = (image: HTMLImageElement): string => {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Unable to process image.");
+  }
+
+  ctx.drawImage(image, 0, 0);
+
+  return canvas.toDataURL("image/png");
+};
+
+const dataURLToImage = (dataURL: string): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to restore image."));
+
+    image.src = dataURL;
+  });
+};
+
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -97,6 +131,10 @@ function App() {
   originalRotation: number;
 } | null>(null);
   const [imageName, setImageName] = useState("");
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [isSavingProject, setIsSavingProject] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -123,13 +161,35 @@ function App() {
   const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [activePanel, setActivePanel] =
-    useState<"properties" | "layers" | "history">("properties");
+    useState<"properties" | "layers" | "history"| "projects">("properties");
   const [layerDragStart, setLayerDragStart] = useState<Point | null>(null);
 
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const isRestoringHistory = useRef(false);
   const historyReady = useRef(false);
+  
+  useEffect(() => {
+  let isMounted = true;
+
+  const loadSavedProjects = async () => {
+    try {
+      const projects = await getAllProjects();
+
+      if (isMounted) {
+        setSavedProjects(projects);
+      }
+    } catch (error) {
+      console.error("Unable to load saved projects:", error);
+    }
+  };
+
+  loadSavedProjects();
+
+  return () => {
+    isMounted = false;
+  };
+}, []);
 
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId);
 
@@ -561,7 +621,130 @@ ctx.translate(-selectionCenterX, -selectionCenterY);
     event.target.value = "";
   };
 
+  const handleSaveProject = async () => {
+  const currentImage = imageRef.current;
+  const originalImage = originalImageRef.current;
+
+  if (!currentImage || !originalImage) {
+    alert("Please upload an image before saving.");
+    return;
+  }
+
+  const name = projectName.trim() || imageName || "Untitled Project";
+
+  try {
+    setIsSavingProject(true);
+
+    const savedLayers = layers.map((layer) => ({
+      ...layer,
+      image: layer.image ? imageToDataURL(layer.image) : undefined,
+    }));
+
+    const project: SavedProject = {
+      id: crypto.randomUUID(),
+      name,
+      imageName,
+      currentImage: imageToDataURL(currentImage),
+      originalImage: imageToDataURL(originalImage),
+      cropRegion: cropRegion ? { ...cropRegion } : null,
+      brightness,
+      contrast,
+      saturation,
+      blur,
+      activePreset,
+      layers: savedLayers,
+      selectedLayerId,
+      updatedAt: Date.now(),
+    };
+
+    await saveProject(project);
+
+    const projects = await getAllProjects();
+    setSavedProjects(projects);
+    setSelectedProjectId(project.id);
+
+    alert("Project saved successfully!");
+  } catch (error) {
+    console.error("Project saving failed:", error);
+    alert("Unable to save project. Please try again.");
+  } finally {
+    setIsSavingProject(false);
+  }
+};
+const handleOpenProject = async (id: string) => {
+  try {
+    const project = await getProject(id);
+
+    if (!project) {
+      alert("Project not found.");
+      return;
+    }
+
+    const currentImage = await dataURLToImage(project.currentImage);
+    const originalImage = await dataURLToImage(project.originalImage);
+
+    const restoredLayers = await Promise.all(
+      project.layers.map(async (savedLayer) => {
+        const layer = savedLayer as EditorLayer & { image?: string };
+
+        return {
+          ...layer,
+          image: layer.image
+            ? await dataURLToImage(layer.image)
+            : undefined,
+        } as EditorLayer;
+      })
+    );
+
+    imageRef.current = currentImage;
+    originalImageRef.current = originalImage;
+
+    setImageName(project.imageName);
+    setProjectName(project.name);
+    setCropRegion(project.cropRegion);
+    setBrightness(project.brightness);
+    setContrast(project.contrast);
+    setSaturation(project.saturation);
+    setBlur(project.blur);
+    setActivePreset(project.activePreset as PresetName);
+    setLayers(restoredLayers);
+    setSelectedLayerId(project.selectedLayerId);
+    setSelectedProjectId(project.id);
+    setImageRevision((previous) => previous + 1);
+
+    alert("Project opened successfully!");
+  } catch (error) {
+    console.error("Project opening failed:", error);
+    alert("Unable to open project.");
+  }
+};
+
+const handleDeleteProject = async (id: string) => {
+  const confirmed = window.confirm(
+    "Are you sure you want to delete this project?"
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await deleteProject(id);
+
+    const projects = await getAllProjects();
+    setSavedProjects(projects);
+
+    if (selectedProjectId === id) {
+      setSelectedProjectId("");
+    }
+
+    alert("Project deleted successfully!");
+  } catch (error) {
+    console.error("Project deletion failed:", error);
+    alert("Unable to delete project.");
+  }
+};
+
   const uploadLayerImage = (event: ChangeEvent<HTMLInputElement>) => {
+    
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -1508,6 +1691,22 @@ if (layerResizeRef.current) {
     WebP
   </button>
 </div>
+<button
+  className="export-button"
+  onClick={handleSaveProject}
+  disabled={isSavingProject}
+>
+  {isSavingProject ? "Saving..." : "Save Project"}
+</button>
+
+<input
+  type="text"
+  className="project-name-input"
+  placeholder="Project name"
+  value={projectName}
+  onChange={(event) => setProjectName(event.target.value)}
+/>
+
          </div>
       </header>  
 
@@ -1790,6 +1989,17 @@ if (layerResizeRef.current) {
                 onClick={() => setActivePanel("history")}
               >
                 History
+              </button>
+
+              <button
+                className={
+                  activePanel === "projects"
+                  ? "panel-tab active"
+                  : "panel-tab"
+                }
+                onClick={() => setActivePanel("projects")}
+              >
+                Projects ({savedProjects.length})
               </button>
             </div>
           </div>
@@ -2083,6 +2293,47 @@ if (layerResizeRef.current) {
               )}
             </>
           )}
+          {/* Saved Projects panel */}
+{activePanel === "projects" && (
+  <div className="projects-panel">
+    <div className="layers-heading">
+      <h4>Saved Projects ({savedProjects.length})</h4>
+    </div>
+
+    {savedProjects.length === 0 ? (
+      <div className="empty-panel">
+        <p>No saved projects yet</p>
+        <span>Save your first project to see it here.</span>
+      </div>
+    ) : (
+      <div className="saved-project-list">
+        {savedProjects.map((project) => (
+          <div className="saved-project-item" key={project.id}>
+           <div>
+  <strong>{project.name}</strong>
+  <span>{project.imageName}</span>
+
+  <button
+    className="export-button"
+    onClick={() => handleOpenProject(project.id)}
+  >
+    Open Project
+  </button>
+
+  <button
+  className="export-button"
+  onClick={() => handleDeleteProject(project.id)}
+>
+  Delete
+</button>
+
+</div> 
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
 
           {/* Layers panel */}
           {activePanel === "layers" && (
