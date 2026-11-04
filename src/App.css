@@ -1,3 +1,34 @@
+:root {
+  /* Typography */
+  --font-family: Inter, Arial, sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 15px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 22px;
+
+  /* Colors */
+  --bg-primary: #111318;
+  --bg-secondary: #191c23;
+  --bg-tertiary: #222630;
+  --border-color: #343945;
+  --text-primary: #e8eaf0;
+  --text-secondary: #aeb3c1;
+  --accent-primary: #765cff;
+  --accent-hover: #886fff;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  /* Controls */
+  --control-height: 36px;
+  --button-radius: 8px;
+}
 
 * {
   margin: 0;
@@ -60,7 +91,7 @@ button:disabled {
 
 .brand {
   gap: 11px;
-  font-size: 21px;
+  font-size: var(--font-size-xl);
   font-weight: 750;
   letter-spacing: -0.8px;
 }
@@ -885,7 +916,7 @@ button:disabled {
   min-width: 0;
   overflow: hidden;
   color: #e8eaf0;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1133,4 +1164,138 @@ button:disabled {
   min-width: 48px;
   font-size: 13px;
   white-space: nowrap;
+}
+
+/* =====================================
+   UI POLISH – TYPOGRAPHY & CONTROLS
+===================================== */
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+}
+
+.workspace-header h2 {
+  font-size: var(--font-size-lg);
+}
+
+.workspace-header p,
+.panel-tab,
+.zoom-controls,
+.control-button {
+  font-size: var(--font-size-sm);
+}
+
+.panel-heading h3,
+.layers-heading h4,
+.layer-properties h4 {
+  font-size: var(--font-size-md);
+}
+
+.layer-add-buttons button,
+.layer-add-image,
+.resize-presets button,
+.resize-reset,
+.resize-apply,
+.preset-button {
+  font-size: var(--font-size-xs);
+}
+
+.layer-properties label,
+.adjustment-label,
+.resize-label {
+  font-size: var(--font-size-sm);
+}
+
+.layer-item {
+  min-height: 44px;
+  padding: 9px 7px;
+}
+
+.layer-item button {
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.export-button,
+.upload-button {
+  min-height: 42px;
+  font-size: var(--font-size-sm);
+  border-radius: var(--button-radius);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
+}
+
+/* Right panel tab layout */
+.right-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-heading {
+  width: 100%;
+  min-width: 0;
+}
+
+.panel-tabs {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.panel-tab {
+  flex: 1 1 25%;
+  min-width: 0;
+  padding: 14px 2px;
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Saved project card styling */
+.saved-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.saved-project-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.saved-project-item strong,
+.saved-project-item span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.saved-project-item strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.saved-project-item span {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.saved-project-item .export-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  margin: 5px 5px 0 0;
+  font-size: 13px;
 }

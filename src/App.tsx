@@ -137,6 +137,7 @@ function App() {
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
+  const [comparisonPosition, setComparisonPosition] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
   const [isTransformingLayer, setIsTransformingLayer] = useState(false);
   const [lastPosition, setLastPosition] = useState<Point>({ x: 0, y: 0 });
@@ -264,36 +265,74 @@ const snapshot: HistorySnapshot = {
 
   const redo = () => {
     if (historyIndex < history.length - 1) restoreHistory(historyIndex + 1);
+  }; 
+  useEffect(() => {
+  const handleKeyDown = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+
+    const isTyping =
+      !!target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable);
+
+    if (isTyping) return;
+
+    const modifier = event.ctrlKey || event.metaKey;
+
+    // Undo and Redo
+    if (modifier && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+
+      if (event.shiftKey) redo();
+      else undo();
+
+      return;
+    }
+
+    if (modifier && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      redo();
+      return;
+    }
+
+    if (event.key === "Delete" || event.key === "Backspace") {
+  if (!selectedLayerId) return;
+
+  event.preventDefault();
+
+  const layerIdToDelete = selectedLayerId;
+
+  setLayers((previous) =>
+    previous.filter((layer) => layer.id !== layerIdToDelete)
+  );
+
+  setSelectedLayerId(null);
+  return;
+}
+
+    // Zoom in
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      setZoom((previous) => Math.min(5, previous + 0.1));
+      return;
+    }
+
+    // Zoom out
+    if (event.key === "-") {
+      event.preventDefault();
+      setZoom((previous) => Math.max(0.1, previous - 0.1));
+    }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const isTyping = !!target && (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      );
+  window.addEventListener("keydown", handleKeyDown);
 
-      if (isTyping) return;
-
-      const modifier = event.ctrlKey || event.metaKey;
-      if (!modifier) return;
-
-      if (event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) redo();
-        else undo();
-      } else if (event.key.toLowerCase() === "y") {
-        event.preventDefault();
-        redo();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [historyIndex, history.length]);
-
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+  };
+}, [historyIndex, history.length, selectedLayerId]);
+    
   const getImageDimensions = () => {
     const image = imageRef.current;
     if (!image) return null;
@@ -370,13 +409,49 @@ const snapshot: HistorySnapshot = {
     const drawHeight = source.height * zoom;
     const filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
 
-    ctx.save();
-    ctx.filter = filter;
-    ctx.drawImage(
-      image, source.x, source.y, source.width, source.height,
-      offset.x, offset.y, drawWidth, drawHeight
-    );
-    ctx.restore();
+    // Draw edited image
+ctx.save();
+ctx.filter = filter;
+ctx.drawImage(
+  image,
+  source.x, source.y, source.width, source.height,
+  offset.x, offset.y, drawWidth, drawHeight
+);
+ctx.restore();
+
+// Draw original image on the left side
+const originalImage = originalImageRef.current;
+
+if (originalImage) {
+  ctx.save();
+
+  const clipWidth = drawWidth * (comparisonPosition / 100);
+
+  ctx.beginPath();
+  ctx.rect(offset.x, offset.y, clipWidth, drawHeight);
+  ctx.clip();
+
+  ctx.filter = "none";
+  ctx.drawImage(
+    originalImage,
+    source.x, source.y, source.width, source.height,
+    offset.x, offset.y, drawWidth, drawHeight
+  );
+
+  ctx.restore();
+
+  // Draw comparison divider
+  const dividerX = offset.x + clipWidth;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(dividerX, offset.y);
+  ctx.lineTo(dividerX, offset.y + drawHeight);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.restore();
+}
 
     layers.forEach((layer) => {
       if (!layer.visible) return;
@@ -537,7 +612,7 @@ ctx.translate(-selectionCenterX, -selectionCenterY);
   }, [
     zoom, offset, imageName, cropRegion, cropMode, cropSelection,
     imageRevision, brightness, contrast, saturation, blur,
-    layers, selectedLayerId,
+    layers, selectedLayerId, comparisonPosition,
   ]);
 
   useEffect(() => {
@@ -1613,25 +1688,103 @@ if (layerResizeRef.current) {
     setOffset({ x: 0, y: 0 });
   };
   
- const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
-  const canvas = canvasRef.current;
+const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
+  const image = imageRef.current;
 
-  if (!canvas) {
-    alert("No canvas available to export.");
+  if (!image) {
+    alert("Please upload an image before exporting.");
     return;
   }
+
+  const source = cropRegion ?? {
+    x: 0,
+    y: 0,
+    width: image.width,
+    height: image.height,
+  };
+
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = source.width;
+  exportCanvas.height = source.height;
+
+  const ctx = exportCanvas.getContext("2d");
+
+  if (!ctx) {
+    alert("Unable to create export canvas.");
+    return;
+  }
+
+  // Draw edited image at its actual dimensions
+  ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
+
+  ctx.drawImage(
+    image,
+    source.x,
+    source.y,
+    source.width,
+    source.height,
+    0,
+    0,
+    source.width,
+    source.height
+  );
+
+  ctx.filter = "none";
+
+  // Draw visible layers without selection handles
+  layers.forEach((layer) => {
+    if (!layer.visible) return;
+
+    ctx.save();
+    ctx.globalAlpha = layer.opacity;
+
+    const centerX = layer.x + layer.width / 2;
+    const centerY = layer.y + layer.height / 2;
+
+    ctx.translate(centerX, centerY);
+    ctx.rotate(((layer.rotation ?? 0) * Math.PI) / 180);
+    ctx.translate(-centerX, -centerY);
+
+    if (layer.type === "text") {
+      ctx.fillStyle = layer.fill;
+      ctx.font = `${layer.fontSize ?? 32}px Arial`;
+      ctx.textBaseline = "top";
+      ctx.fillText(layer.text ?? "", layer.x, layer.y, layer.width);
+    }
+
+    if (layer.type === "rectangle") {
+      ctx.fillStyle = layer.fill;
+      ctx.fillRect(layer.x, layer.y, layer.width, layer.height);
+    }
+
+    if (layer.type === "circle") {
+      ctx.fillStyle = layer.fill;
+      ctx.beginPath();
+      ctx.ellipse(
+        centerX,
+        centerY,
+        layer.width / 2,
+        layer.height / 2,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    if (layer.type === "image" && layer.image) {
+      ctx.drawImage(layer.image, layer.x, layer.y, layer.width, layer.height);
+    }
+
+    ctx.restore();
+  });
 
   const mimeType = `image/${format}`;
   const quality = format === "png" ? undefined : 0.92;
 
-  const dataUrl = canvas.toDataURL(mimeType, quality);
-
   const link = document.createElement("a");
-  link.href = dataUrl;
-  link.download = `pixelstudio-export.${
-    format === "jpeg" ? "jpg" : format
-  }`;
-
+  link.href = exportCanvas.toDataURL(mimeType, quality);
+  link.download = `pixelstudio-export.${format === "jpeg" ? "jpg" : format}`;
   link.click();
 };
 
@@ -1897,6 +2050,25 @@ if (layerResizeRef.current) {
               onChange={uploadLayerImage}
             />
           </div>
+          
+          {/* Before / After Comparison */}
+{imageRef.current && (
+  <div className="comparison-controls">
+    <label>
+      Original / Edited: {comparisonPosition}%
+    </label>
+
+    <input
+      type="range"
+      min="0"
+      max="100"
+      value={comparisonPosition}
+      onChange={(e) =>
+        setComparisonPosition(Number(e.target.value))
+      }
+    />
+  </div>
+)}
 
           {/* Canvas */}
           <div className="canvas-area">
