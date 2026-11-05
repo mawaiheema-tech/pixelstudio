@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent } from "react";
 import {
   ImagePlus, Upload, ZoomIn, ZoomOut, Maximize, RotateCcw,
   RotateCw, FlipHorizontal, FlipVertical, MousePointer2, Crop,
   SlidersHorizontal, Layers, Undo2, Redo2, Settings,
   Image as ImageIcon, Check, X, Lock, Unlock, Type, Square,
-  Circle, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, History,
+  Circle, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, History,Sun , Moon 
 } from "lucide-react";
 import "./App.css";
 import {
@@ -113,6 +113,12 @@ function App() {
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const layerImageInputRef = useRef<HTMLInputElement>(null);
+  const [darkMode, setDarkMode] = useState(true);
+  
+  const [originalImageDimensions, setOriginalImageDimensions] = useState<{
+  width: number;
+  height: number;
+} | null>(null);
 
   const layerDragRef = useRef<{
     id: string;
@@ -167,6 +173,7 @@ function App() {
 
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyIndexRef = useRef(0);
   const isRestoringHistory = useRef(false);
   const historyReady = useRef(false);
   
@@ -219,15 +226,18 @@ const snapshot: HistorySnapshot = {
     if (!historyReady.current) {
       historyReady.current = true;
       setHistory([snapshot]);
+      historyIndexRef.current = 0;
       setHistoryIndex(0);
       return;
     }
 
     setHistory((previous) => {
-      const next = previous.slice(0, historyIndex + 1);
+      const next = previous.slice(0, historyIndexRef.current + 1);
       next.push(snapshot);
       const trimmed = next.length > 100 ? next.slice(-100) : next;
-      setHistoryIndex(trimmed.length - 1);
+      const nextIndex = trimmed.length - 1;
+      historyIndexRef.current = nextIndex;
+      setHistoryIndex(nextIndex);
       return trimmed;
     });
    }, [
@@ -236,14 +246,28 @@ const snapshot: HistorySnapshot = {
     isTransformingLayer,
   ]);
 
-  const restoreHistory = (index: number) => {
+  const restoreHistory = useCallback((index: number) => {
     const snapshot = history[index];
     if (!snapshot) return;
 
     isRestoringHistory.current = true;
     imageRef.current = snapshot.image;
-    setImageName(snapshot.name);
-    setCropRegion(snapshot.cropRegion ? { ...snapshot.cropRegion } : null);
+    
+    if (snapshot.image) {
+      setOriginalImageDimensions({
+        width: snapshot.image.width,
+        height: snapshot.image.height,
+      });
+    }  
+    const restoredDimensions = snapshot.cropRegion ?? snapshot.image;
+
+  if (restoredDimensions) {
+    setResizeWidth(Math.round(restoredDimensions.width));
+    setResizeHeight(Math.round(restoredDimensions.height));
+  }
+
+setImageName(snapshot.name);
+setCropRegion(snapshot.cropRegion ? { ...snapshot.cropRegion } : null);
     setBrightness(snapshot.brightness);
     setContrast(snapshot.contrast);
     setSaturation(snapshot.saturation);
@@ -256,16 +280,20 @@ const snapshot: HistorySnapshot = {
     setCropStart(null);
     setIsSelecting(false);
     setImageRevision((value) => value + 1);
+    historyIndexRef.current = index;
     setHistoryIndex(index);
-  };
+  }, [history]);
 
-  const undo = () => {
-    if (historyIndex > 0) restoreHistory(historyIndex - 1);
-  };
+  const undo = useCallback(() => {
+  if (historyIndex > 0) restoreHistory(historyIndex - 1);
+}, [historyIndex, restoreHistory]);
 
-  const redo = () => {
-    if (historyIndex < history.length - 1) restoreHistory(historyIndex + 1);
-  }; 
+const redo = useCallback(() => {
+  if (historyIndex < history.length - 1) {
+    restoreHistory(historyIndex + 1);
+  }
+}, [historyIndex, history.length, restoreHistory]);
+
   useEffect(() => {
   const handleKeyDown = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
@@ -331,16 +359,15 @@ const snapshot: HistorySnapshot = {
   return () => {
     window.removeEventListener("keydown", handleKeyDown);
   };
-}, [historyIndex, history.length, selectedLayerId]);
+}, [historyIndex, history.length, selectedLayerId, undo, redo]);
     
   const getImageDimensions = () => {
-    const image = imageRef.current;
-    if (!image) return null;
+  if (!originalImageDimensions) return null;
 
-    return cropRegion
-      ? { width: cropRegion.width, height: cropRegion.height }
-      : { width: image.width, height: image.height };
-  };
+  return cropRegion
+    ? { width: cropRegion.width, height: cropRegion.height }
+    : originalImageDimensions;
+};
 
   const resetAdjustments = () => {
     setBrightness(100);
@@ -359,13 +386,6 @@ const snapshot: HistorySnapshot = {
     setActivePreset(name);
   };
 
-  useEffect(() => {
-    const dimensions = getImageDimensions();
-    if (dimensions) {
-      setResizeWidth(Math.round(dimensions.width));
-      setResizeHeight(Math.round(dimensions.height));
-    }
-  }, [imageRevision, cropRegion]);
 
   const getCanvasPoint = (event: MouseEvent<HTMLCanvasElement>): Point => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -375,7 +395,7 @@ const snapshot: HistorySnapshot = {
     };
   };
 
-  const drawCanvas = () => {
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
     if (!canvas) return;
@@ -605,22 +625,33 @@ ctx.translate(-selectionCenterX, -selectionCenterY);
       corners.forEach(([cx, cy]) => ctx.fillRect(cx - 4, cy - 4, 8, 8));
       ctx.restore();
     }
-  };
-
-  useEffect(() => {
-    drawCanvas();
   }, [
-    zoom, offset, imageName, cropRegion, cropMode, cropSelection,
-    imageRevision, brightness, contrast, saturation, blur,
-    layers, selectedLayerId, comparisonPosition,
-  ]);
+  cropRegion,
+  zoom,
+  brightness,
+  contrast,
+  saturation,
+  blur,
+  offset,
+  comparisonPosition,
+  layers,
+  selectedLayerId,
+  cropMode,
+  cropSelection,
+]);
 
   useEffect(() => {
-    const handleResize = () => drawCanvas();
-    window.addEventListener("resize", handleResize);
-    drawCanvas();
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  drawCanvas();
+}, [drawCanvas]);
+
+  useEffect(() => {
+  const handleResize = () => drawCanvas();
+
+  window.addEventListener("resize", handleResize);
+  drawCanvas();
+
+  return () => window.removeEventListener("resize", handleResize);
+}, [drawCanvas]);
 
   const fitToScreen = () => {
     const canvas = canvasRef.current;
@@ -653,6 +684,12 @@ ctx.translate(-selectionCenterX, -selectionCenterY);
 
     image.onload = () => {
       imageRef.current = image;
+      setOriginalImageDimensions({
+        width: image.width,
+        height: image.height,
+      });
+      setResizeWidth(image.width);
+      setResizeHeight(image.height);
       originalImageRef.current = image;
       setImageName(file.name);
       setZoom(1);
@@ -772,6 +809,13 @@ const handleOpenProject = async (id: string) => {
     );
 
     imageRef.current = currentImage;
+    setOriginalImageDimensions({
+      width: currentImage.width,
+      height: currentImage.height,
+    });
+
+    setResizeWidth(currentImage.width);
+    setResizeHeight(currentImage.height);
     originalImageRef.current = originalImage;
 
     setImageName(project.imageName);
@@ -1405,6 +1449,8 @@ if (layerResizeRef.current) {
     if (nextCrop.width <= 0 || nextCrop.height <= 0) return;
 
     setCropRegion(nextCrop);
+    setResizeWidth(Math.round(nextCrop.width));
+    setResizeHeight(Math.round(nextCrop.height));
     setCropMode(false);
     setCropSelection(null);
     setCropStart(null);
@@ -1430,6 +1476,12 @@ if (layerResizeRef.current) {
   const resetCrop = () => {
     setCropRegion(null);
     cancelCrop();
+
+    if (imageRef.current) {
+    setResizeWidth(imageRef.current.width);
+    setResizeHeight(imageRef.current.height);
+  }
+
 
     requestAnimationFrame(() => fitToScreen());
   };
@@ -1500,6 +1552,12 @@ if (layerResizeRef.current) {
 
     transformedImage.onload = () => {
       imageRef.current = transformedImage;
+      setOriginalImageDimensions({
+         width: transformedImage.width,
+         height: transformedImage.height,
+      });
+      setResizeWidth(transformedImage.width);
+      setResizeHeight(transformedImage.height);
       setCropRegion(null);
       setCropSelection(null);
       setCropMode(false);
@@ -1615,6 +1673,12 @@ if (layerResizeRef.current) {
 
     resizedImage.onload = () => {
       imageRef.current = resizedImage;
+      setOriginalImageDimensions({
+        width: resizedImage.width,
+        height: resizedImage.height,
+      });
+      setResizeWidth(resizedImage.width);
+      setResizeHeight(resizedImage.height);
       setCropRegion(null);
       setCropSelection(null);
       setCropMode(false);
@@ -1654,6 +1718,10 @@ if (layerResizeRef.current) {
     }
 
     imageRef.current = originalImage;
+    setOriginalImageDimensions({
+      width: originalImage.width,
+      height: originalImage.height,
+    });
     setCropRegion(null);
     setCropSelection(null);
     setCropStart(null);
@@ -1789,7 +1857,7 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
 };
 
   return (
-    <div className="app">
+    <div className={`app ${darkMode ? "dark-mode" : "light-mode"}`}>
       {/* Top navigation */}
       <header className="topbar">
         <div className="brand">
@@ -1802,6 +1870,13 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
         </div>
 
         <div className="topbar-actions">
+          <button
+  className="icon-button theme-toggle"
+  title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+  onClick={() => setDarkMode(!darkMode)}
+>
+  {darkMode ? <Sun /> : <Moon />}
+</button>
           <button
             className="icon-button"
             title="Undo (Ctrl+Z)"
@@ -2052,7 +2127,7 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
           </div>
           
           {/* Before / After Comparison */}
-{imageRef.current && (
+{imageName && (
   <div className="comparison-controls">
     <label>
       Original / Edited: {comparisonPosition}%

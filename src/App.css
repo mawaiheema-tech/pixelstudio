@@ -43,6 +43,17 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
+/* Light Mode Theme */
+.app.light-mode {
+  --bg-primary: #f4f5f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e9ebf2;
+  --border-color: #d5d9e3;
+  --text-primary: #202331;
+  --text-secondary: #626879;
+  --accent-primary: #6548e8;
+  --accent-hover: #765cff;
+}
 
 body {
   min-width: 320px;
@@ -65,7 +76,8 @@ button:disabled {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #111318;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 /* Top navigation */
@@ -94,10 +106,15 @@ button:disabled {
   font-size: var(--font-size-xl);
   font-weight: 750;
   letter-spacing: -0.8px;
+  color: var(--text-primary);
+}
+
+.brand > span {
+  color: #e8eaf0 !important;
 }
 
 .brand > span > span {
-  color: #8b78ff;
+  color: #8b78ff !important;
 }
 
 .brand-icon {
@@ -120,7 +137,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #aeb3c1;
+  color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -129,7 +146,7 @@ button:disabled {
 
 .icon-button:hover,
 .control-button:hover {
-  color: white;
+  color: var(--text-primary);
   background: #292e39;
 }
 
@@ -219,6 +236,7 @@ button:disabled {
   flex-direction: column;
 }
 
+/* Workspace header */
 .workspace-header {
   min-height: 75px;
   display: flex;
@@ -328,10 +346,16 @@ button:disabled {
 
 .right-panel {
   width: 260px;
+  min-width: 0;
+  height: 100%;
+  max-height: 100%;
   flex-shrink: 0;
-  background: #191c23;
-  border-left: 1px solid #292d37;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-left: 1px solid var(--border-color);
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 .panel-heading {
@@ -339,12 +363,13 @@ button:disabled {
   display: flex;
   align-items: center;
   padding: 0 20px;
-  border-bottom: 1px solid #292d37;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .panel-heading h3 {
   font-size: 15px;
   font-weight: 650;
+  color: var(--text-primary);
 }
 
 .empty-panel {
@@ -355,7 +380,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #858c9c;
+  color: var(--text-secondary);
 }
 
 .empty-panel svg {
@@ -365,7 +390,7 @@ button:disabled {
 
 .empty-panel p {
   margin-bottom: 8px;
-  color: #e0e2e9;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -385,17 +410,18 @@ button:disabled {
   place-items: center;
   margin-bottom: 18px;
   color: #9585ff;
-  background: #252333;
+  background: var(--bg-tertiary);
   border-radius: 9px;
 }
 
 .image-properties h4 {
   font-size: 14px;
   margin-bottom: 8px;
+  color: var(--text-primary);
 }
 
 .filename {
-  color: #9299a9;
+  color: var(--text-secondary);
   font-size: 12px;
   overflow-wrap: anywhere;
   margin-bottom: 22px;
@@ -406,16 +432,16 @@ button:disabled {
   justify-content: space-between;
   gap: 8px;
   padding: 12px 0;
-  border-bottom: 1px solid #30343e;
+  border-bottom: 1px solid var(--border-color);
   font-size: 12px;
 }
 
 .property-row span {
-  color: #9299a9;
+  color: var(--text-secondary);
 }
 
 .property-row strong {
-  color: #e7e9f0;
+  color: var(--text-primary);
   font-weight: 550;
 }
 
@@ -611,54 +637,192 @@ button:disabled {
   }
 }
 
+
 @media (max-width: 650px) {
-  .topbar {
-    height: 58px;
-    padding: 0 12px;
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
   }
 
+  .app {
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+.topbar {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.brand {
+  font-size: 17px;
+}
+
+.topbar-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.topbar-actions .icon-button,
+.topbar-actions .divider {
+  display: none;
+}
+
+.topbar-actions .export-options {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.topbar-actions .export-options .export-button {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 4px;
+}
+
+.topbar-actions .project-name-input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.topbar-actions > .export-button {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+}
   .brand {
     font-size: 17px;
   }
 
-  .right-panel {
-    display: none;
+  .editor {
+    display: flex;
+    flex: 1 1 0;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: 0;
+    overflow: hidden;
   }
 
   .left-toolbar {
-    width: 52px;
+    width: 48px;
+    flex: 0 0 48px;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .tool {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
   }
 
-  .workspace-header {
-    padding: 10px;
+  .workspace {
+    display: flex;
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding-right: 0;
+    box-sizing: border-box;
   }
 
-  .workspace-actions {
-    gap: 5px;
-    justify-content: flex-end;
-  }
+ .workspace-header {
+  flex: 0 0 auto;
+  min-height: 105px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 10px;
+}
+
+.workspace-header h2 {
+  font-size: 13px;
+}
+
+.workspace-actions {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.workspace-actions .upload-button {
+  max-width: 100%;
+  flex-shrink: 1;
+  white-space: nowrap;
+}
+
+.workspace-actions input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.workspace-actions button {
+  flex-shrink: 0;
+}
 
   .canvas-area {
-    padding: 10px;
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    max-width: 100%;
+    padding: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: stretch;
+  }
+
+  .canvas-container {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
   }
 
   .canvas-controls {
-    padding: 0 8px;
+    flex: 0 0 auto;
+    padding: 0 6px;
+    flex-wrap: wrap;
   }
 
   .upload-button,
   .export-button {
-    padding: 9px;
+    padding: 8px;
     font-size: 11px;
   }
 
   .view-controls {
     gap: 3px;
+    flex-wrap: wrap;
   }
 
   .control-button {
@@ -670,7 +834,35 @@ button:disabled {
     padding: 8px;
     font-size: 10px;
   }
+
+  .right-panel {
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 10px;
+  box-sizing: border-box;
 }
+
+.panel-heading {
+  width: 100%;
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+
+.panel-tabs {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+}
+
+.panel-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+}
+
 
 @media (max-width: 400px) {
   .brand {
@@ -1233,7 +1425,10 @@ input:focus-visible {
 /* Right panel tab layout */
 .right-panel {
   min-width: 0;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 .panel-heading {
