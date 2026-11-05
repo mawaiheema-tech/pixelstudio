@@ -14,9 +14,7 @@ PixelStudio is a modern image editing application that allows users to upload, e
 - Zoom in, zoom out, fit to screen, and reset the canvas.
 
 ### Image Adjustments
-- Brightness control.
-- Contrast adjustment.
-- Saturation adjustment.
+- Brightness, contrast, and saturation controls.
 - Blur effect.
 - Built-in image presets.
 - Before/After comparison slider.
@@ -26,15 +24,13 @@ PixelStudio is a modern image editing application that allows users to upload, e
 - Move, resize, and rotate layers.
 - Control layer visibility and opacity.
 - Lock and unlock layers.
-- Reorder layers.
-- Select and manage individual layers.
+- Reorder and manage individual layers.
 
 ### History & Project Management
 - Undo and redo operations.
 - View and restore previous editing states.
 - Save projects locally using IndexedDB.
 - Reopen and delete saved projects.
-- Restore image and layer information.
 
 ### Export Options
 - Export images as PNG, JPG, and WebP.
@@ -57,13 +53,13 @@ PixelStudio is a modern image editing application that allows users to upload, e
 | IndexedDB | Local project storage |
 | Lucide React | Interface icons |
 
+## 📸 Screenshots
+
+Screenshots of the application will be added soon.
 
 ## 🚀 Getting Started
 
-Follow these instructions to run PixelStudio locally.
-
 ### Prerequisites
-
 - Node.js
 - npm
 - Git
