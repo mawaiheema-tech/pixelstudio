@@ -184,6 +184,31 @@ function LayersPanel({
       {selectedLayer && (
         <div className="layer-properties">
           <h4>Selected Layer</h4>
+<label>
+  Blend Mode
+
+  <select
+    value={selectedLayer.blendMode ?? "source-over"}
+    onChange={(event) =>
+      updateLayer(selectedLayer.id, {
+        blendMode: event.target.value as
+          | "source-over"
+          | "multiply"
+          | "screen"
+          | "overlay"
+          | "darken"
+          | "lighten",
+      })
+    }
+  >
+    <option value="source-over">Normal</option>
+    <option value="multiply">Multiply</option>
+    <option value="screen">Screen</option>
+    <option value="overlay">Overlay</option>
+    <option value="darken">Darken</option>
+    <option value="lighten">Lighten</option>
+  </select>
+</label>
 
           <p className="selected-layer-name">
             {selectedLayer.name}

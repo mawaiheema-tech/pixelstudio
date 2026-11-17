@@ -35,6 +35,14 @@ export type PresetName =
 
 export type LayerType = "text" | "rectangle" | "circle" | "image";
 
+export type BlendMode =
+  | "source-over"
+  | "multiply"
+  | "screen"
+  | "overlay"
+  | "darken"
+  | "lighten";
+
 export type EditorLayer = {
   id: string;
   name: string;
@@ -47,6 +55,7 @@ export type EditorLayer = {
   visible: boolean;
   locked: boolean;
   opacity: number;
+  blendMode?: BlendMode;
   text?: string;
   fontSize?: number;
   fill: string;

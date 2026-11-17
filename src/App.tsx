@@ -55,6 +55,8 @@ import { getCanvasPoint } from "./utils/canvasUtils";
 import { getImageDimensions as calculateImageDimensions } from "./utils/dimensionUtils";
 import { isSupportedImage } from "./utils/fileUtils";
 import { loadLayerImage } from "./utils/layerImageUtils";
+import ExportSettings from "./components/ExportSettings";
+
 
 
 function App() {
@@ -104,10 +106,16 @@ function App() {
   const [cropSelection, setCropSelection] = useState<Selection | null>(null);
   const [cropRegion, setCropRegion] = useState<CropRegion | null>(null);
   const [imageRevision, setImageRevision] = useState(0);
+  const [cropAspectRatio, setCropAspectRatio] = useState<number | null>(null);
 
   const [resizeWidth, setResizeWidth] = useState(0);
   const [resizeHeight, setResizeHeight] = useState(0);
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
+
+  const [exportQuality, setExportQuality] = useState(92);
+  const [exportWidth, setExportWidth] = useState(0);
+  const [exportHeight, setExportHeight] = useState(0);
+  const [exportLockAspectRatio, setExportLockAspectRatio] = useState(true);
 
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
@@ -419,6 +427,7 @@ if (originalImage) {
 
       ctx.save();
       ctx.globalAlpha = layer.opacity;
+      ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
 
       const centerX = layerX + layerWidth / 2;
 const centerY = layerY + layerHeight / 2;
@@ -1068,12 +1077,56 @@ if (activeLayer?.visible && !activeLayer.locked) {
       const startX = Math.min(imageRight, Math.max(imageLeft, cropStart.x));
       const startY = Math.min(imageBottom, Math.max(imageTop, cropStart.y));
 
-      setCropSelection({
-        x: Math.min(startX, currentX),
-        y: Math.min(startY, currentY),
-        width: Math.abs(currentX - startX),
-        height: Math.abs(currentY - startY),
-      });
+const deltaX = currentX - startX;
+const deltaY = currentY - startY;
+
+const directionX = deltaX < 0 ? -1 : 1;
+const directionY = deltaY < 0 ? -1 : 1;
+
+let selectionWidth = Math.abs(deltaX);
+let selectionHeight = Math.abs(deltaY);
+
+const maxWidth =
+  directionX < 0
+    ? startX - imageLeft
+    : imageRight - startX;
+
+const maxHeight =
+  directionY < 0
+    ? startY - imageTop
+    : imageBottom - startY;
+
+if (cropAspectRatio !== null) {
+  const desiredWidth = Math.max(
+    selectionWidth,
+    selectionHeight * cropAspectRatio
+  );
+
+  const maxAllowedWidth = Math.min(
+    maxWidth,
+    maxHeight * cropAspectRatio
+  );
+
+  selectionWidth = Math.min(
+    desiredWidth,
+    maxAllowedWidth
+  );
+
+  selectionHeight = selectionWidth / cropAspectRatio;
+}
+
+const selectionX =
+  directionX < 0 ? startX - selectionWidth : startX;
+
+const selectionY =
+  directionY < 0 ? startY - selectionHeight : startY;
+
+setCropSelection({
+  x: selectionX,
+  y: selectionY,
+  width: selectionWidth,
+  height: selectionHeight,
+});
 
       return;
     }
@@ -1576,6 +1629,9 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
       blur,
       layers,
       format,
+      quality: exportQuality,
+      width: exportWidth,
+      height: exportHeight,
     });
 
     const link = document.createElement("a");
@@ -1628,6 +1684,18 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
           </button>
 
           <span className="divider" />
+<ExportSettings
+  quality={exportQuality}
+  width={exportWidth}
+  height={exportHeight}
+  lockAspectRatio={exportLockAspectRatio}
+  sourceWidth={cropRegion?.width ?? imageRef.current?.width ?? 0}
+  sourceHeight={cropRegion?.height ?? imageRef.current?.height ?? 0}
+  onQualityChange={setExportQuality}
+  onWidthChange={setExportWidth}
+  onHeightChange={setExportHeight}
+  onLockAspectRatioChange={setExportLockAspectRatio}
+/>
 
           <div className="export-options">
             <button
@@ -1763,6 +1831,42 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
 
               {cropMode && (
                 <>
+<div className="crop-ratio-controls">
+  <button
+  className={cropAspectRatio === null ? "active" : ""}
+  onClick={() => setCropAspectRatio(null)}
+>
+  Free
+</button>
+
+<button
+  className={cropAspectRatio === 1 ? "active" : ""}
+  onClick={() => setCropAspectRatio(1)}
+>
+  1:1
+</button>
+
+<button
+  className={cropAspectRatio === 4 / 3 ? "active" : ""}
+  onClick={() => setCropAspectRatio(4 / 3)}
+>
+  4:3
+</button>
+
+<button
+  className={cropAspectRatio === 16 / 9 ? "active" : ""}
+  onClick={() => setCropAspectRatio(16 / 9)}
+>
+  16:9
+</button>
+
+<button
+  className={cropAspectRatio === 9 / 16 ? "active" : ""}
+  onClick={() => setCropAspectRatio(9 / 16)}
+>
+  9:16
+</button>
+</div>
                   <button className="crop-cancel-button" onClick={cancelCrop}>
                     <X size={16} />
                     Cancel
@@ -1910,7 +2014,7 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
                 }
                 onClick={() => setActivePanel("layers")}
               >
-                Layers ({layers.length})
+                Layers 
               </button>
 
               <button
@@ -1932,7 +2036,7 @@ const exportImage = (format: "png" | "jpeg" | "webp" = "png") => {
                 }
                 onClick={() => setActivePanel("projects")}
               >
-                Projects ({savedProjects.length})
+                Projects
               </button>
             </div>
           </div>

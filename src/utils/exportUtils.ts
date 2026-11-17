@@ -12,6 +12,9 @@ type ExportOptions = {
   blur: number;
   layers: EditorLayer[];
   format: ExportFormat;
+  quality: number;
+  width: number;
+  height: number;
 };
 
 export function createExportDataURL({
@@ -23,10 +26,16 @@ export function createExportDataURL({
   blur,
   layers,
   format,
+  quality,
+  width,
+  height,
 }: ExportOptions): string {
   const canvas = document.createElement("canvas");
-  canvas.width = source.width;
-  canvas.height = source.height;
+  const outputWidth = width || source.width;
+  const outputHeight = height || source.height;
+
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
 
   const ctx = canvas.getContext("2d");
 
@@ -34,6 +43,10 @@ export function createExportDataURL({
     throw new Error("Unable to create export canvas.");
   }
 
+  ctx.scale(
+    outputWidth / source.width,
+    outputHeight / source.height
+  );
   ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
 
   ctx.drawImage(
@@ -55,6 +68,7 @@ export function createExportDataURL({
 
     ctx.save();
     ctx.globalAlpha = layer.opacity;
+    ctx.globalCompositeOperation = layer.blendMode ?? "source-over";    
 
     const centerX = layer.x + layer.width / 2;
     const centerY = layer.y + layer.height / 2;
@@ -98,7 +112,8 @@ export function createExportDataURL({
   });
 
   const mimeType = `image/${format}`;
-  const quality = format === "png" ? undefined : 0.92;
+ 
+  const outputQuality = format === "png" ? undefined : quality / 100;
 
-  return canvas.toDataURL(mimeType, quality);
+  return canvas.toDataURL(mimeType, outputQuality);
 }
