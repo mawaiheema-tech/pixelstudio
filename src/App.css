@@ -8,7 +8,7 @@
   --font-size-lg: 18px;
   --font-size-xl: 22px;
 
-  /* Colors */
+    /* Colors */
   --bg-primary: #111318;
   --bg-secondary: #191c23;
   --bg-tertiary: #222630;
@@ -17,6 +17,11 @@
   --text-secondary: #aeb3c1;
   --accent-primary: #765cff;
   --accent-hover: #886fff;
+  --surface-hover: #292e39;
+  --canvas-bg: #111318;
+  --muted-text: #9097a7;
+  --danger-bg: #39252b;
+  --danger-text: #ff9b9b;
 
   /* Spacing */
   --space-xs: 4px;
@@ -53,6 +58,11 @@
   --text-secondary: #626879;
   --accent-primary: #6548e8;
   --accent-hover: #765cff;
+  --surface-hover: #e9eaf1;
+  --canvas-bg: #e1e3e9;
+  --muted-text: #707789;
+  --danger-bg: #fce8e8;
+  --danger-text: #b42332;
 }
 
 body {
@@ -89,8 +99,8 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #191c23;
-  border-bottom: 1px solid #292d37;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .brand,
@@ -110,7 +120,7 @@ button:disabled {
 }
 
 .brand > span {
-  color: #e8eaf0 !important;
+  color: var(--text-primary) !important;
 }
 
 .brand > span > span {
@@ -147,13 +157,13 @@ button:disabled {
 .icon-button:hover,
 .control-button:hover {
   color: var(--text-primary);
-  background: #292e39;
+  background: var(--surface-hover);
 }
 
 .divider {
   height: 25px;
   width: 1px;
-  background: #343945;
+  background: var(--border-color);
 }
 
 .export-button,
@@ -193,8 +203,8 @@ button:disabled {
   align-items: center;
   gap: 12px;
   padding: 18px 0;
-  background: #191c23;
-  border-right: 1px solid #292d37;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
 }
 
 .tool {
@@ -202,7 +212,7 @@ button:disabled {
   height: 42px;
   display: grid;
   place-items: center;
-  color: #9097a7;
+  color: var(--muted-text);
   background: transparent;
   border: none;
   border-radius: 9px;
@@ -243,19 +253,19 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   padding: 12px 22px;
-  background: #191c23;
-  border-bottom: 1px solid #292d37;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .workspace-header h2 {
-  color: #e8eaf0;
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 650;
 }
 
 .workspace-header p {
   margin-top: 5px;
-  color: #858c9c;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -276,12 +286,12 @@ button:disabled {
   flex: 1;
   min-height: 0;
   padding: 22px;
-  background-color: #111318;
-  background-image:
-    linear-gradient(45deg, #1b1e26 25%, transparent 25%),
-    linear-gradient(-45deg, #1b1e26 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #1b1e26 75%),
-    linear-gradient(-45deg, transparent 75%, #1b1e26 75%);
+  background-color: var(--canvas-bg);
+background-image:
+  linear-gradient(45deg, var(--bg-tertiary) 25%, transparent 25%),
+  linear-gradient(-45deg, var(--bg-tertiary) 25%, transparent 25%),
+  linear-gradient(45deg, transparent 75%, var(--bg-tertiary) 75%),
+  linear-gradient(-45deg, transparent 75%, var(--bg-tertiary) 75%);
   background-size: 24px 24px;
   background-position:
     0 0,
@@ -297,9 +307,9 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #292d37;
+  border:  1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(12, 14, 19, 0.35);
+  background: var(--bg-secondary);
 }
 
 .canvas {
@@ -323,13 +333,13 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: #191c23;
-  border-top: 1px solid #292d37;
+  background: var(--bg-secondary);
+  border-top:  1px solid var(--border-color);
 }
 
 .zoom-controls {
   gap: 12px;
-  color: #d5d8e1;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -339,7 +349,7 @@ button:disabled {
 
 .control-button {
   font-size: 12px;
-  border: 1px solid #343945;
+  border: 1px solid var(--border-color);
 }
 
 /* Right properties panel */
@@ -385,7 +395,7 @@ button:disabled {
 
 .empty-panel svg {
   margin-bottom: 14px;
-  color: #8270ff;
+  color: var(--accent-primary);
 }
 
 .empty-panel p {
@@ -409,7 +419,7 @@ button:disabled {
   display: grid;
   place-items: center;
   margin-bottom: 18px;
-  color: #9585ff;
+  color: var(--accent-primary);
   background: var(--bg-tertiary);
   border-radius: 9px;
 }
@@ -476,13 +486,13 @@ button:disabled {
 }
 
 .crop-cancel-button {
-  color: #d6d8e1;
-  background: #292e39;
-  border: 1px solid #414653;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
 }
 
 .crop-cancel-button:hover {
-  background: #383e4b;
+  background: var(--surface-hover);
 }
 
 .crop-cursor {
@@ -506,8 +516,8 @@ button:disabled {
 }
 
 .transform-actions .control-button:hover {
-  color: #ffffff;
-  background: #5542a8;
+  color: white;
+  background: var(--accent-primary);
 }
 
 /* Resize panel */
@@ -515,7 +525,7 @@ button:disabled {
 .resize-section {
   margin-top: 25px;
   padding-top: 20px;
-  border-top: 1px solid #30343e;
+  border-top: 1px solid var(--border-color);
 }
 
 .resize-heading {
@@ -535,9 +545,9 @@ button:disabled {
   align-items: center;
   gap: 5px;
   padding: 6px 8px;
-  color: #b9adff;
-  background: #292541;
-  border: 1px solid #49406e;
+  color: var(--accent-primary);
+  background:var(--bg-tertiary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   font-size: 10px;
   white-space: nowrap;
@@ -546,7 +556,7 @@ button:disabled {
 .resize-label {
   display: block;
   margin-bottom: 13px;
-  color: #aeb3c1;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -554,9 +564,9 @@ button:disabled {
   width: 100%;
   margin-top: 7px;
   padding: 10px;
-  color: #e8eaf0;
-  background: #111318;
-  border: 1px solid #343945;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 7px;
   outline: none;
 }
@@ -573,23 +583,23 @@ button:disabled {
 }
 
 .resize-presets span {
-  color: #9299a9;
+  color: var(--muted-text);
   font-size: 11px;
   margin-bottom: 3px;
 }
 
 .resize-presets button {
   padding: 8px;
-  color: #d5d8e1;
-  background: #252a34;
-  border: 1px solid #343945;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   font-size: 11px;
 }
 
 .resize-presets button:hover {
-  background: #38304f;
-  border-color: #765cff;
+  background: var(--surface-hover);
+  border-color: var(--accent-primary);
 }
 
 .resize-buttons {
@@ -608,9 +618,9 @@ button:disabled {
 }
 
 .resize-reset {
-  color: #d5d8e1;
-  background: #292e39;
-  border: 1px solid #414653;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
 }
 
 .resize-apply {
